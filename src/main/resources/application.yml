@@ -3,6 +3,13 @@ spring:
     name: tykalo
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/tykalo}
+    username: ${POSTGRES_USER:tykalo}
+    password: ${POSTGRES_PASSWORD:tykalo}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 server:
   port: ${SERVER_PORT:8080}
