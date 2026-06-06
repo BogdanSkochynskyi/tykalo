@@ -3,19 +3,21 @@ package io.tykalo;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Base class for integration tests that need a real database. Spins up a
- * Postgres 16 container (matching docker-compose) and wires it into the Spring
- * context via {@link ServiceConnection}, so Flyway runs against it on startup.
+ * Base class for integration tests that need a real database. Uses the singleton-container
+ * pattern: a single Postgres 16 container (matching docker-compose) is started once when this
+ * class loads and reused across every test class via Spring's cached context. It is deliberately
+ * never stopped between classes — that would invalidate the pooled connection in the cached
+ * context — and is torn down by Testcontainers' Ryuk when the JVM exits.
  */
 @SpringBootTest
-@Testcontainers
 public abstract class AbstractIntegrationTest {
 
-    @Container
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+
+    static {
+        POSTGRES.start();
+    }
 }

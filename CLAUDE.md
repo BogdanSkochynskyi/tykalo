@@ -70,6 +70,7 @@ jspecify = "1.0.0"
 # Flyway is BOM-managed — do NOT pin. Pull it via the spring-boot-flyway module (see nuances below).
 
 [libraries]
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }   # BOM-managed; needed for entities + Spring Data repositories
 telegram-bots-starter = { module = "org.telegram:telegrambots-springboot-longpolling-starter", version.ref = "telegram-bots" }
 telegram-bots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegram-bots" }
 quartz = { module = "org.quartz-scheduler:quartz", version.ref = "quartz" }
@@ -226,7 +227,7 @@ tykalo/
 **Stack:**
 - **JUnit 5 + AssertJ** — required. AssertJ for readable assertions: `assertThat(result).isEqualTo(...)`, not JUnit-style.
 - **Mockito** for unit tests of services with external dependencies.
-- **Testcontainers** for integration tests — Postgres, Redis. One base `@Testcontainers` class, extend in tests.
+- **Testcontainers** for integration tests — Postgres, Redis. One base class (`AbstractIntegrationTest`), extend in tests. Use the **singleton-container pattern**: a `static final` container started in a `static {}` initializer with `@ServiceConnection` — NOT `@Testcontainers`/`@Container`. The `@Container` lifecycle stops the container in each class's `afterAll`, but Spring caches/shares the context across test classes, so the next integration class hits a dead port ("connection refused"). The singleton stays up for the JVM (Ryuk tears it down at exit).
 - **WireMock** for external APIs (Telegram, Google Calendar, Anthropic, OpenAI).
 - **@SpringBootTest** only when you genuinely need full context. For service logic, `@ExtendWith(MockitoExtension.class)` is enough.
 
@@ -247,7 +248,7 @@ tykalo/
 - Flyway migrations are **atomic and irreversible**. New column = new migration, don't combine with breaking changes.
 
 ### Telegram bot
-- Each command handler is its own class with `@TelegramCommand("/command")` (custom annotation, implemented in TK-105).
+- Each command handler is its own class with a method annotated `@TelegramCommand("/command")` (custom annotation, implemented in TK-105). Handler methods have the signature `String handle(Update)` — the returned text is sent as the reply (return `null` to stay silent). `TelegramCommandDispatcher` (a `BeanPostProcessor`) discovers them at startup and routes updates by command (case-insensitive, strips `@botname`). The dispatcher is pure routing — no Telegram-API dependency. `TykaloBot` (`SpringLongPollingBot`) owns the actual send and is gated by `telegram.bot.polling.enabled` (default true; set false in tests so no context polls Telegram).
 - FSM dialog states (Phase 2+) — Spring StateMachine.
 - When there's no current list context — dispatcher picks Inbox as default.
 
