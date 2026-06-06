@@ -28,6 +28,9 @@ dependencies {
     implementation(libs.telegram.bots.client)
     implementation(libs.jspecify)
 
+    implementation(libs.logstash.logback.encoder)
+    implementation(libs.sentry.logback)
+
     implementation(libs.spring.boot.flyway)
     implementation(libs.flyway.database.postgresql)
     runtimeOnly(libs.postgresql)

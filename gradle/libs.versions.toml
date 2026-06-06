@@ -4,6 +4,8 @@ telegram-bots = "10.0.0"
 jspecify = "1.0.0"
 lombok = "1.18.46"
 testcontainers = "2.0.5"
+logstash-logback-encoder = "8.1"
+sentry = "8.9.0"
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -24,6 +26,8 @@ testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgr
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-logback-encoder" }
+sentry-logback = { module = "io.sentry:sentry-logback", version.ref = "sentry" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
