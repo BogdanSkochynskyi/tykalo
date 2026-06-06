@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration. Levels are intentionally left to application*.yml
+  (logging.level.*), which Spring Boot applies on top of this file.
+
+    - dev / any non-prod profile: human-readable console, MDC inline.
+    - prod: structured JSON (logstash encoder) + Sentry for ERROR events.
+
+  Sentry only does anything when the SENTRY_DSN environment variable is set;
+  without it the appender initialises to a no-op, so the integration is opt-in.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%-5level) %clr([%X{userId:-},%X{chatId:-}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- includeMdc defaults to true: userId/chatId are emitted as top-level JSON fields. -->
+            <fieldNames>
+                <logger>logger</logger>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <appender name="SENTRY" class="io.sentry.logback.SentryAppender">
+        <minimumEventLevel>ERROR</minimumEventLevel>
+        <minimumBreadcrumbLevel>INFO</minimumBreadcrumbLevel>
+    </appender>
+
+    <springProfile name="prod">
+        <root>
+            <appender-ref ref="JSON"/>
+            <appender-ref ref="SENTRY"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!prod">
+        <root>
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>
