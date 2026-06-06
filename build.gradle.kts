@@ -23,6 +23,9 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.jdbc)
+    implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.telegram.bots.starter)
+    implementation(libs.telegram.bots.client)
     implementation(libs.jspecify)
 
     implementation(libs.spring.boot.flyway)
