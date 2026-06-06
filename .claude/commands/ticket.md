@@ -47,6 +47,7 @@ Before writing any code, **think hard** about the approach:
 
 ## 5. Implement with tests
 - Create a feature branch matching the **TK ticket ID** (not the Linear TYK number): pattern `bohdan/tk-{XXX}-{short-name}` where `XXX` is the TK number from `$ARGUMENTS` (e.g., `TK-101` → `bohdan/tk-101-bootstrap-spring-boot`). Lowercase, hyphens only, no underscores. Adjust the user prefix if the git config differs.
+- **Move the Linear ticket to "In Progress":** extract `TYK-N` from the ticket header in `Tykalo_CC_Prompts.md` (e.g., `### TK-101 (TYK-5) — ...` → `TYK-5`). Use Linear MCP — fetch statuses for team `Tykalo` (`mcp__linear__list_issue_statuses`), then update the issue (`mcp__linear__save_issue`) with the "In Progress" state. If the call fails, report the error and ask me to update manually — don't skip silently.
 - Implement strictly per the acceptance criteria in the ticket.
 - **Write tests in the same commit per CLAUDE.md mandatory testing policy.** Not as a follow-up, not as a TODO. JUnit 5 + AssertJ + Mockito for unit, Testcontainers for integration. See CLAUDE.md → Testing for what to cover and what's exempt.
 - If the ticket adds a Flyway migration, place it under `src/main/resources/db/migration/` with the next available `V{N}__purpose.sql` prefix.
@@ -60,10 +61,11 @@ Before writing any code, **think hard** about the approach:
 
 ## 7. Wrap up
 Provide:
-- A commit message in format `[$ARGUMENTS] short imperative description`
-- Brief summary of files changed, tests added, tradeoffs/decisions made
-- Reminder to move the Linear ticket to "In Review" (or "Done" if merging solo)
-- If conventions evolved or new patterns emerged during this ticket, propose updates to CLAUDE.md
+- Ask to commit with message in format `[$ARGUMENTS] (TYK-N) short imperative description` — both IDs are required so Linear's git integration auto-detects the ticket as a backup. Extract `TYK-N` from the ticket header.
+- For the PR description, include a separate line `Closes TYK-N` — this auto-moves the ticket to Done on merge if Linear's GitHub integration is configured.
+- Brief summary of files changed, tests added, tradeoffs/decisions made.
+- **Move the Linear ticket to "In Review"** via Linear MCP (`mcp__linear__save_issue` with the "In Review" state for team `Tykalo`). If I confirm the PR is merged (or there's no PR for solo direct-to-main work), move to "Done" instead.
+- If conventions evolved or new patterns emerged during this ticket, propose updates to CLAUDE.md.
 
 ## Communication
 All chat output, code comments, commit messages, and log messages — in English (per CLAUDE.md → Communication).

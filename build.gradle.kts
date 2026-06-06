@@ -22,7 +22,12 @@ dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.validation)
+    implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.jspecify)
+
+    implementation(libs.spring.boot.flyway)
+    implementation(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
@@ -30,6 +35,10 @@ dependencies {
     testAnnotationProcessor(libs.lombok)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.testcontainers)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
 }
 
 tasks.withType<JavaCompile>().configureEach {

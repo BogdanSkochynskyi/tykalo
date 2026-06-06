@@ -65,20 +65,27 @@ spring-boot = "4.0.6"
 telegram-bots = "10.0.0"
 quartz = "2.5.0"
 shedlock = "6.4.0"
-flyway = "11.10.0"
-testcontainers = "1.21.5"
+testcontainers = "2.0.5"   # NOT in the Spring Boot BOM — pin it (Boot 4.0.6 pulls 2.0.5 transitively)
 jspecify = "1.0.0"
+# Flyway is BOM-managed — do NOT pin. Pull it via the spring-boot-flyway module (see nuances below).
 
 [libraries]
 telegram-bots-starter = { module = "org.telegram:telegrambots-springboot-longpolling-starter", version.ref = "telegram-bots" }
 telegram-bots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegram-bots" }
 quartz = { module = "org.quartz-scheduler:quartz", version.ref = "quartz" }
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+spring-boot-flyway = { module = "org.springframework.boot:spring-boot-flyway" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 ```
 
 **Important Spring Boot 4 nuances:**
 - **JSpecify replaces older nullability annotations.** Use `@NullMarked` at package-level, `@Nullable` for nullable values from `org.jspecify.annotations`. Don't mix with `org.springframework.lang.Nullable`.
 - **Modularization** — Spring Boot 4 split monolithic JARs into smaller modules. If migrating from 3.x, update `build.gradle` to the new starter names.
+- **Flyway autoconfig moved into its own module.** Raw `org.flywaydb:flyway-core` does NOT activate Flyway in Boot 4 — migrations silently never run. Depend on `org.springframework.boot:spring-boot-flyway` (it carries flyway-core + the autoconfiguration), plus `org.flywaydb:flyway-database-postgresql` (Flyway 11 needs the per-DB module for Postgres).
+- **Testcontainers 2.0.x (what Boot 4.0.6 pulls) renamed everything.** Modules are now `org.testcontainers:testcontainers-postgresql` / `testcontainers-junit-jupiter` (was `postgresql` / `junit-jupiter`); the container class moved to `org.testcontainers.postgresql.PostgreSQLContainer` (the old `org.testcontainers.containers.*` one is deprecated → fails under `-Werror`) and is no longer generic (drop the `<?>`). Not in the Boot BOM — pin via `testcontainers-bom`.
 - **Spring Framework 7 + Hibernate 7** — several JPA-API changes; never use deprecated `javax.persistence`, only `jakarta.persistence`.
 - **HTTP Service Clients** (new in 4.0) — declarative HTTP clients via annotations, an alternative to WebClient/RestTemplate. Consider for Google Calendar API and LLM providers.
 
@@ -244,6 +251,21 @@ tykalo/
 - FSM dialog states (Phase 2+) — Spring StateMachine.
 - When there's no current list context — dispatcher picks Inbox as default.
 
+## Linear status automation
+
+Linear MCP is configured in Claude Code, so CC can update ticket status directly via the API. The status flow is:
+
+`Backlog → In Progress (at step 5 of /ticket) → In Review (at step 7) → Done (after PR merge)`
+
+**How CC should use Linear MCP:**
+1. **Find the ticket** by its Linear identifier (TYK-N). Available tool: `mcp__linear__get_issue` with `query: "TYK-N"`.
+2. **Find the target status** in team `Tykalo`. Available tool: `mcp__linear__list_issue_statuses` with `team: "Tykalo"`. Match by name (e.g., "In Progress").
+3. **Update the ticket.** Available tool: `mcp__linear__save_issue` with the ticket identifier and the new state ID.
+
+If a Linear MCP call fails (auth issue, network), CC should report the error and remind the user to update the status manually — never silently skip.
+
+**Backup:** Linear-GitHub integration (Linear Settings → Integrations → GitHub) provides a fallback via commit/PR scanning. Commit messages must include `(TYK-N)` and PR descriptions should have `Closes TYK-N` for this to work. Both mechanisms coexist fine.
+
 ## Build / run / test
 
 ```bash
@@ -281,10 +303,12 @@ docker-compose -f docker-compose.prod.yml up -d
 
 1. **Before writing any code** — read the full ticket description in Linear (TYK-N) and the corresponding prompt in `Tykalo_CC_Prompts.md`.
 2. **Check dependencies** — many tickets reference earlier ones. Don't start TK-156 without TK-151.
-3. **One ticket = one branch.** Branch name pattern: `bohdan/tk-{XXX}-{short-name}` where `XXX` is the TK ticket number (e.g., `bohdan/tk-101-bootstrap-spring-boot`, not `tk-5-...` from Linear's internal ID). Lowercase, hyphens, no underscores.
-4. **Tests are part of the ticket.** Not a separate ticket. Not a TODO. Same commit/PR. See Testing — MANDATORY POLICY above.
-5. **Migrations** — new `V{N+1}__purpose.sql`, never edit previous ones.
-6. **When done** — `./gradlew check` must pass (includes tests), then git push, open a PR (even solo — for history), and move the Linear ticket to Done.
+3. **One ticket = one branch.** Branch name pattern: `bohdan/tk-{XXX}-{short-name}` where `XXX` is the TK ticket number (e.g., `bohdan/tk-101-bootstrap-spring-boot`). Lowercase, hyphens, no underscores.
+4. **Commit messages and PR titles** must include the Linear ID (`TYK-N`) — Linear's git integration uses this to auto-move ticket status. Format: `[TK-XXX] (TYK-N) Short imperative description`. Example: `[TK-101] (TYK-5) Bootstrap Spring Boot 4.x project`.
+5. **PR descriptions** should include `Closes TYK-N` on a separate line — this auto-moves the ticket to Done on merge.
+6. **Tests are part of the ticket.** Not a separate ticket. Not a TODO. Same commit/PR. See Testing — MANDATORY POLICY above.
+7. **Migrations** — new `V{N+1}__purpose.sql`, never edit previous ones.
+8. **When done** — `./gradlew check` must pass (includes tests), then git push, open a PR (even solo — for history). Linear auto-moves the ticket if its git integration is configured; if not, also use the Linear MCP tools (see Linear status automation below) or move it manually.
 
 **Definition of Done:**
 - ✅ Code implements the ticket's acceptance criteria
