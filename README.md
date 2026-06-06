@@ -1,5 +1,7 @@
 # Тикало
 
+[![CI](https://github.com/BogdanSkochynskyi/tykalo/actions/workflows/ci.yml/badge.svg)](https://github.com/BogdanSkochynskyi/tykalo/actions/workflows/ci.yml)
+
 Telegram-бот для управління особистими задачами і списками з механікою градуйованого соціального тиску (Nudger-и).
 
 Особистий проект, один користувач. Деталі контексту, домен-моделі і конвенцій — у [CLAUDE.md](./CLAUDE.md).
