@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      # Configures Gradle, validates the wrapper, and caches the Gradle user home.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Integration tests provision their own Postgres via Testcontainers, which
+      # uses the Docker daemon preinstalled on ubuntu-latest — no service containers
+      # needed. `build` depends on `check` -> `test`, so this runs the full test suite.
+      - name: Build & test
+        run: ./gradlew build --no-daemon --stacktrace
