@@ -250,6 +250,7 @@ tykalo/
 
 ### Telegram bot
 - Each command handler is its own class with a method annotated `@TelegramCommand("/command")` (custom annotation, implemented in TK-105). Handler methods have the signature `String handle(Update)` — the returned text is sent as the reply (return `null` to stay silent). `TelegramCommandDispatcher` (a `BeanPostProcessor`) discovers them at startup and routes updates by command (case-insensitive, strips `@botname`). The dispatcher is pure routing — no Telegram-API dependency. `TykaloBot` (`SpringLongPollingBot`) owns the actual send and is gated by `telegram.bot.polling.enabled` (default true; set false in tests so no context polls Telegram).
+- **Non-command (plain text) messages** — those that don't start with `/` — are routed to `MessageHandler` beans (`Optional<String> handle(Update)`, implemented in TK-123). The dispatcher collects them during the same `BeanPostProcessor` scan (it checks `bean instanceof MessageHandler`, not constructor injection — injecting beans into a `BeanPostProcessor` forces premature initialization) and consults them in registration order, sending the first non-empty reply. A handler returns `Optional.empty()` for messages it doesn't own, so unclaimed text stays silent. First use: `BulkAddHandler` (multi-line → N tasks). `/`-prefixed messages never reach message handlers.
 - FSM dialog states (Phase 2+) — Spring StateMachine.
 - When there's no current list context — dispatcher picks Inbox as default.
 
