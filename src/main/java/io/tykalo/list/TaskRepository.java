@@ -23,4 +23,32 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
               AND t.archivedAt IS NULL
             """)
     List<Task> findOverdue(@Param("now") Instant now);
+
+    /**
+     * An owner's still-actionable overdue tasks: {@code TODO}, due before {@code now}, not archived.
+     */
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.ownerId = :ownerId
+              AND t.status = io.tykalo.list.TaskStatus.TODO
+              AND t.dueAt < :now
+              AND t.archivedAt IS NULL
+            """)
+    List<Task> findOverdueByOwner(@Param("ownerId") UUID ownerId, @Param("now") Instant now);
+
+    /**
+     * An owner's still-actionable tasks due within the half-open window {@code [startInclusive,
+     * endExclusive)}: {@code TODO}, not archived. Callers compute the window in the user's zone.
+     */
+    @Query("""
+            SELECT t FROM Task t
+            WHERE t.ownerId = :ownerId
+              AND t.status = io.tykalo.list.TaskStatus.TODO
+              AND t.archivedAt IS NULL
+              AND t.dueAt >= :startInclusive
+              AND t.dueAt < :endExclusive
+            """)
+    List<Task> findDueBetween(@Param("ownerId") UUID ownerId,
+                              @Param("startInclusive") Instant startInclusive,
+                              @Param("endExclusive") Instant endExclusive);
 }

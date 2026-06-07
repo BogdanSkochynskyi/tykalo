@@ -81,6 +81,11 @@ public class TaskList {
         return create(owner, "Inbox", ListType.INBOX);
     }
 
+    /** Creates a list of the given type; the Nudger policy follows the type's default. */
+    public static TaskList of(final User owner, final String name, final ListType type) {
+        return create(owner, name, type);
+    }
+
     private static TaskList create(final User owner, final String name, final ListType type) {
         final TaskList list = new TaskList();
         list.ownerId = Objects.requireNonNull(owner.getId(), "owner must be persisted before creating a list");
