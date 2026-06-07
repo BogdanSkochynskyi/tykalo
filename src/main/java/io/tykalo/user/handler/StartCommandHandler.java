@@ -18,7 +18,6 @@ public class StartCommandHandler {
 
     @TelegramCommand("/start")
     public String start(final Update update) {
-        // The per-user Inbox list is created once the List domain lands (TK-111/TK-112).
         final User user = userService.findOrCreate(update);
         return greeting(user);
     }
