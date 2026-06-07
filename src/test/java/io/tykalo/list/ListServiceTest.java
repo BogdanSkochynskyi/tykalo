@@ -96,6 +96,36 @@ class ListServiceTest {
     }
 
     @Test
+    void findActiveByName_matchesCaseInsensitively_amongActiveLists() {
+        // Arrange
+        final UUID ownerId = UUID.randomUUID();
+        final TaskList groceries = TaskList.checklist(owner(), "Groceries");
+        when(listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId))
+                .thenReturn(List.of(groceries));
+
+        // Act
+        final Optional<TaskList> result = listService.findActiveByName(ownerId, "  groceries ");
+
+        // Assert
+        assertThat(result).containsSame(groceries);
+    }
+
+    @Test
+    void findActiveByName_returnsEmpty_whenNoActiveMatch() {
+        final UUID ownerId = UUID.randomUUID();
+        when(listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId))
+                .thenReturn(List.of(TaskList.checklist(owner(), "Groceries")));
+
+        assertThat(listService.findActiveByName(ownerId, "Chores")).isEmpty();
+    }
+
+    @Test
+    void findActiveByName_returnsEmpty_forBlankName() {
+        assertThat(listService.findActiveByName(UUID.randomUUID(), "  ")).isEmpty();
+        verify(listRepository, never()).findByOwnerIdAndArchivedAtIsNull(any());
+    }
+
+    @Test
     void deleteList_softDeletes_bySettingArchivedAt() {
         // Arrange
         final UUID id = UUID.randomUUID();

@@ -50,6 +50,21 @@ public class ListService {
         return listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId);
     }
 
+    /**
+     * Looks up an owner's active list by name, case-insensitively. Used to detect name collisions
+     * on create and to resolve the target of a delete; archived lists never match.
+     */
+    @Transactional(readOnly = true)
+    public Optional<TaskList> findActiveByName(final UUID ownerId, final String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        final String target = name.strip();
+        return listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId).stream()
+                .filter(list -> list.getName().equalsIgnoreCase(target))
+                .findFirst();
+    }
+
     @Transactional
     public void deleteList(final UUID id) {
         final TaskList list = listRepository.findById(id)

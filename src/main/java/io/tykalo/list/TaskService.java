@@ -71,6 +71,12 @@ public class TaskService {
         }
     }
 
+    /** Count of an owner's live (non-archived) tasks in the given list. */
+    @Transactional(readOnly = true)
+    public long countActiveTasks(final UUID listId) {
+        return taskRepository.countByListIdAndArchivedAtIsNull(listId);
+    }
+
     /** An owner's still-actionable tasks due during their local calendar day in {@code zone}. */
     @Transactional(readOnly = true)
     public List<Task> findToday(final UUID ownerId, final ZoneId zone) {
