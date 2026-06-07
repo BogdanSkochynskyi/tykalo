@@ -2,9 +2,12 @@ package io.tykalo.list;
 
 import io.tykalo.user.User;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -61,6 +64,17 @@ public class ListService {
     @Transactional(readOnly = true)
     public List<TaskList> findAllByOwner(final UUID ownerId) {
         return listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId);
+    }
+
+    /**
+     * Resolves the given list ids to their names in one batch query (no N+1), keyed by id.
+     * Ids with no matching row are simply absent from the map; archived lists are included so a
+     * task still renders under its (now archived) list name in views.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> namesByIds(final Collection<UUID> ids) {
+        return listRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(TaskList::getId, TaskList::getName));
     }
 
     /**

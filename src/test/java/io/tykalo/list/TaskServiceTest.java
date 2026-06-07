@@ -296,6 +296,34 @@ class TaskServiceTest {
     }
 
     @Test
+    void findWeek_queriesSevenDayWindowFromTodayStart() {
+        // Arrange
+        final UUID ownerId = UUID.randomUUID();
+        final ZoneId zone = ZoneId.of("Europe/Kyiv");
+        when(taskRepository.findDueBetween(eq(ownerId), any(), any())).thenReturn(List.of());
+
+        // Act
+        taskService.findWeek(ownerId, zone);
+
+        // Assert
+        final ArgumentCaptor<Instant> start = ArgumentCaptor.forClass(Instant.class);
+        final ArgumentCaptor<Instant> end = ArgumentCaptor.forClass(Instant.class);
+        verify(taskRepository).findDueBetween(eq(ownerId), start.capture(), end.capture());
+        final LocalDate today = LocalDate.now(zone);
+        assertThat(start.getValue()).isEqualTo(today.atStartOfDay(zone).toInstant());
+        assertThat(end.getValue()).isEqualTo(today.plusDays(7).atStartOfDay(zone).toInstant());
+    }
+
+    @Test
+    void find_returnsTaskById() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        assertThat(taskService.find(id)).contains(task);
+    }
+
+    @Test
     void findOverdue_delegatesToOwnerScopedQuery() {
         // Arrange
         final UUID ownerId = UUID.randomUUID();
