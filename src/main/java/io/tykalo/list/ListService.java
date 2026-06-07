@@ -31,6 +31,14 @@ public class ListService {
         return saved;
     }
 
+    /** Provisions the per-user Inbox (name "Inbox", type INBOX, Nudgers off). */
+    @Transactional
+    public TaskList createInbox(final User owner) {
+        final TaskList saved = listRepository.save(TaskList.inbox(owner));
+        log.info("Created inbox id={} owner={}", saved.getId(), saved.getOwnerId());
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public Optional<TaskList> getById(final UUID id) {
         return listRepository.findById(id);

@@ -17,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,6 +28,9 @@ class UserServiceTest {
 
     @Mock
     private TimezoneResolver timezoneResolver;
+
+    @Mock
+    private ApplicationEventPublisher events;
 
     @InjectMocks
     private UserService userService;
@@ -44,6 +48,7 @@ class UserServiceTest {
         // Assert
         assertThat(result).isSameAs(existing);
         verify(userRepository, never()).save(any());
+        verify(events, never()).publishEvent(any());
     }
 
     @Test
@@ -67,6 +72,23 @@ class UserServiceTest {
         assertThat(saved.getValue().getQuietHoursStart()).isEqualTo(LocalTime.of(22, 0));
         assertThat(saved.getValue().getQuietHoursEnd()).isEqualTo(LocalTime.of(7, 0));
         assertThat(result).isSameAs(saved.getValue());
+    }
+
+    @Test
+    void findOrCreate_publishesUserCreatedEvent_onFirstContact() {
+        // Arrange
+        final Update update = TelegramUpdateFixtures.command("/start", 42L, "bob", "uk");
+        when(userRepository.findByTgChatId(42L)).thenReturn(Optional.empty());
+        when(timezoneResolver.resolve("uk")).thenReturn(ZoneId.of("Europe/Kyiv"));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.findOrCreate(update);
+
+        // Assert
+        final ArgumentCaptor<UserCreatedEvent> event = ArgumentCaptor.forClass(UserCreatedEvent.class);
+        verify(events).publishEvent(event.capture());
+        assertThat(event.getValue().user()).isSameAs(result);
     }
 
     @Test

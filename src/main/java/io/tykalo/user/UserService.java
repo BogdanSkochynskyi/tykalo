@@ -3,6 +3,7 @@ package io.tykalo.user;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -15,6 +16,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final TimezoneResolver timezoneResolver;
+    private final ApplicationEventPublisher events;
 
     /**
      * Returns the user behind the given update, creating one on first contact.
@@ -36,6 +38,7 @@ public class UserService {
         final User user = userRepository.save(
                 User.create(message.getChatId(), message.getFrom().getUserName(), timezone, languageCode));
         log.info("Created new user id={} tgChatId={} timezone={}", user.getId(), user.getTgChatId(), timezone);
+        events.publishEvent(new UserCreatedEvent(user));
         return user;
     }
 }

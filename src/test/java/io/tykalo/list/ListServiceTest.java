@@ -55,6 +55,25 @@ class ListServiceTest {
     }
 
     @Test
+    void createInbox_createsInboxList_namedInbox_withNudgersOff() {
+        // Arrange
+        final User owner = owner();
+        when(listRepository.save(any(TaskList.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        final TaskList result = listService.createInbox(owner);
+
+        // Assert
+        final ArgumentCaptor<TaskList> saved = ArgumentCaptor.forClass(TaskList.class);
+        verify(listRepository).save(saved.capture());
+        assertThat(saved.getValue().getName()).isEqualTo("Inbox");
+        assertThat(saved.getValue().getType()).isEqualTo(ListType.INBOX);
+        assertThat(saved.getValue().getNudgerDefaultPolicy()).isEqualTo(NudgerDefaultPolicy.OFF);
+        assertThat(saved.getValue().getOwnerId()).isEqualTo(owner.getId());
+        assertThat(result).isSameAs(saved.getValue());
+    }
+
+    @Test
     void createList_rejectsBlankName() {
         final User owner = owner();
         assertThatThrownBy(() -> listService.createList(owner, "   ", ListType.CHECKLIST))
