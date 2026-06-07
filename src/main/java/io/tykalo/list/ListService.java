@@ -44,6 +44,19 @@ public class ListService {
         return listRepository.findById(id);
     }
 
+    /** Like {@link #getById(UUID)} but excludes soft-deleted (archived) lists. */
+    @Transactional(readOnly = true)
+    public Optional<TaskList> getActiveById(final UUID id) {
+        return listRepository.findById(id).filter(list -> list.getArchivedAt() == null);
+    }
+
+    /** The owner's active Inbox (auto-provisioned on registration). Empty only if it was archived. */
+    @Transactional(readOnly = true)
+    public Optional<TaskList> findInbox(final UUID ownerId) {
+        return listRepository.findByOwnerIdAndTypeAndArchivedAtIsNull(ownerId, ListType.INBOX).stream()
+                .findFirst();
+    }
+
     /** Active (non-archived) lists for the owner; soft-deleted lists are excluded. */
     @Transactional(readOnly = true)
     public List<TaskList> findAllByOwner(final UUID ownerId) {

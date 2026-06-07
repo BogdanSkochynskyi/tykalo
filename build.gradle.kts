@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.telegram.bots.starter)
     implementation(libs.telegram.bots.client)
     implementation(libs.jspecify)
