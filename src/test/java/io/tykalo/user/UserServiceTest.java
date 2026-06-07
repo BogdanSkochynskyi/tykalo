@@ -96,4 +96,18 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.findOrCreate(TelegramUpdateFixtures.withoutMessage()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void updateTimezone_setsAndPersists_newZone() {
+        // Arrange
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.updateTimezone(user, ZoneId.of("Europe/Warsaw"));
+
+        // Assert
+        verify(userRepository).save(user);
+        assertThat(result.getTimezone()).isEqualTo(ZoneId.of("Europe/Warsaw"));
+    }
 }

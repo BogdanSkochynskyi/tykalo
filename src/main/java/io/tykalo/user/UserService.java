@@ -32,6 +32,18 @@ public class UserService {
                 .orElseGet(() -> create(message));
     }
 
+    /**
+     * Persists a new timezone for the user. Callers validate the {@link ZoneId} at the
+     * boundary; this method just stores it (the user is merged, as it arrives detached).
+     */
+    @Transactional
+    public User updateTimezone(final User user, final ZoneId timezone) {
+        user.setTimezone(timezone);
+        final User saved = userRepository.save(user);
+        log.info("Updated timezone of user id={} to {}", saved.getId(), timezone);
+        return saved;
+    }
+
     private User create(final Message message) {
         final String languageCode = message.getFrom().getLanguageCode();
         final ZoneId timezone = timezoneResolver.resolve(languageCode);
