@@ -9,4 +9,6 @@ public interface ListRepository extends JpaRepository<TaskList, UUID> {
     List<TaskList> findByOwnerId(UUID ownerId);
 
     List<TaskList> findByOwnerIdAndArchivedAtIsNull(UUID ownerId);
+
+    List<TaskList> findByOwnerIdAndTypeAndArchivedAtIsNull(UUID ownerId, ListType type);
 }
