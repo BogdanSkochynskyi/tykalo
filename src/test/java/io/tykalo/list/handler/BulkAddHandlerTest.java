@@ -9,8 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.tykalo.list.CurrentContextService;
+import io.tykalo.list.ListMessageService;
 import io.tykalo.list.ListType;
-import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
 import io.tykalo.telegram.TelegramUpdateFixtures;
@@ -40,6 +40,9 @@ class BulkAddHandlerTest {
     @Mock
     private TaskService taskService;
 
+    @Mock
+    private ListMessageService listMessageService;
+
     @InjectMocks
     private BulkAddHandler handler;
 
@@ -62,22 +65,21 @@ class BulkAddHandlerTest {
     }
 
     @Test
-    void handle_createsOneTaskPerLine_inChecklist() {
+    void handle_createsOneTaskPerLine_andPublishesLiveList_inChecklist() {
         // Arrange
         when(userService.findOrCreate(any(Update.class))).thenReturn(owner);
         final TaskList groceries = list("Groceries", ListType.CHECKLIST);
         when(currentContext.resolveCurrentList(owner.getId())).thenReturn(Optional.of(groceries));
-        when(taskService.createTasks(eq(groceries.getId()), anyList()))
-                .thenReturn(List.of(new Task(), new Task(), new Task()));
 
-        // Act
+        // Act — message arrives from chat 1
         final Optional<String> reply = handler.handle(msg("milk\nbread\neggs"));
 
-        // Assert
+        // Assert — tasks created, the live editable list is published, no text reply
         final ArgumentCaptor<List<String>> titles = ArgumentCaptor.captor();
         verify(taskService).createTasks(eq(groceries.getId()), titles.capture());
         assertThat(titles.getValue()).containsExactly("milk", "bread", "eggs");
-        assertThat(reply).get().asString().contains("Added 3 tasks to list \"Groceries\"");
+        verify(listMessageService).publish(groceries, 1L);
+        assertThat(reply).isEmpty();
     }
 
     @Test
@@ -85,15 +87,14 @@ class BulkAddHandlerTest {
         when(userService.findOrCreate(any(Update.class))).thenReturn(owner);
         final TaskList inbox = list("Inbox", ListType.INBOX);
         when(currentContext.resolveCurrentList(owner.getId())).thenReturn(Optional.of(inbox));
-        when(taskService.createTasks(eq(inbox.getId()), anyList()))
-                .thenReturn(List.of(new Task(), new Task()));
 
         final Optional<String> reply = handler.handle(msg("  milk  \n\n   \n bread "));
 
         final ArgumentCaptor<List<String>> titles = ArgumentCaptor.captor();
         verify(taskService).createTasks(eq(inbox.getId()), titles.capture());
         assertThat(titles.getValue()).containsExactly("milk", "bread");
-        assertThat(reply).get().asString().contains("Added 2 tasks to list \"Inbox\"");
+        verify(listMessageService).publish(inbox, 1L);
+        assertThat(reply).isEmpty();
     }
 
     @Test
