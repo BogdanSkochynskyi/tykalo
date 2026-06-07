@@ -27,12 +27,23 @@ public class TaskService {
 
     @Transactional
     public Task createTask(final UUID listId, final String title) {
-        return createTask(listId, title, null);
+        return createTask(listId, title, null, null);
     }
 
     /** Creates a task with an optional deadline ({@code dueAt} is stored in UTC; {@code null} = no due date). */
     @Transactional
     public Task createTask(final UUID listId, final String title, final @Nullable Instant dueAt) {
+        return createTask(listId, title, dueAt, null);
+    }
+
+    /**
+     * Creates a task with an optional deadline and recurrence rule. {@code dueAt} is stored in UTC;
+     * {@code recurrenceRule} is the short {@code FREQ=…} fragment from {@link RecurrenceParser}
+     * (the full RRULE grammar lands in TK-201). Either may be {@code null}.
+     */
+    @Transactional
+    public Task createTask(final UUID listId, final String title, final @Nullable Instant dueAt,
+                           final @Nullable String recurrenceRule) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Task title must not be blank");
         }
@@ -40,9 +51,10 @@ public class TaskService {
                 .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
         final Task task = Task.create(list, title.strip());
         task.setDueAt(dueAt);
+        task.setRecurrenceRule(recurrenceRule);
         final Task saved = taskRepository.save(task);
-        log.info("Created task id={} list={} owner={} dueAt={}",
-                saved.getId(), list.getId(), saved.getOwnerId(), dueAt);
+        log.info("Created task id={} list={} owner={} dueAt={} recurrence={}",
+                saved.getId(), list.getId(), saved.getOwnerId(), dueAt, recurrenceRule);
         return saved;
     }
 
