@@ -110,4 +110,34 @@ class UserServiceTest {
         verify(userRepository).save(user);
         assertThat(result.getTimezone()).isEqualTo(ZoneId.of("Europe/Warsaw"));
     }
+
+    @Test
+    void updateQuietHours_setsAndPersists_newWindow() {
+        // Arrange
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.updateQuietHours(user, LocalTime.of(23, 0), LocalTime.of(6, 30));
+
+        // Assert
+        verify(userRepository).save(user);
+        assertThat(result.getQuietHoursStart()).isEqualTo(LocalTime.of(23, 0));
+        assertThat(result.getQuietHoursEnd()).isEqualTo(LocalTime.of(6, 30));
+    }
+
+    @Test
+    void disableQuietHours_clearsBothBounds() {
+        // Arrange
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.disableQuietHours(user);
+
+        // Assert
+        verify(userRepository).save(user);
+        assertThat(result.getQuietHoursStart()).isNull();
+        assertThat(result.getQuietHoursEnd()).isNull();
+    }
 }
