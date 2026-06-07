@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -161,6 +162,25 @@ public class TaskService {
     @Transactional(readOnly = true)
     public List<Task> findOverdue(final UUID ownerId) {
         return taskRepository.findOverdueByOwner(ownerId, Instant.now());
+    }
+
+    /**
+     * An owner's still-actionable tasks due within the next seven days — the half-open window
+     * {@code [today 00:00, today+7 00:00)} in {@code zone}, so it includes everything left for today
+     * plus the following six days.
+     */
+    @Transactional(readOnly = true)
+    public List<Task> findWeek(final UUID ownerId, final ZoneId zone) {
+        final LocalDate today = LocalDate.now(zone);
+        final Instant startInclusive = today.atStartOfDay(zone).toInstant();
+        final Instant endExclusive = today.plusDays(7).atStartOfDay(zone).toInstant();
+        return taskRepository.findDueBetween(ownerId, startInclusive, endExclusive);
+    }
+
+    /** Looks up a single task by id (including archived ones); empty when no such task exists. */
+    @Transactional(readOnly = true)
+    public Optional<Task> find(final UUID taskId) {
+        return taskRepository.findById(taskId);
     }
 
     private Task require(final UUID taskId) {
