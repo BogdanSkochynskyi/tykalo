@@ -21,6 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # gradlew committed from Windows loses its executable bit, so `./gradlew`
+      # fails with exit 126 before any build step. Fail fast with a fixable message.
+      - name: Verify gradlew is executable
+        run: |
+          mode=$(git ls-files --stage gradlew | cut -d' ' -f1)
+          if [ "$mode" != "100755" ]; then
+            echo "::error file=gradlew::gradlew must be mode 100755 in git (found $mode). Fix with: git update-index --chmod=+x gradlew"
+            exit 1
+          fi
+
       - name: Set up JDK 25
         uses: actions/setup-java@v5
         with:
