@@ -72,6 +72,22 @@ class TaskServiceTest {
     }
 
     @Test
+    void createTask_storesDueAt_whenProvided() {
+        // Arrange
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+        final Instant due = Instant.parse("2026-06-15T11:00:00Z");
+
+        // Act
+        final Task result = taskService.createTask(list.getId(), "Submit report", due);
+
+        // Assert
+        assertThat(result.getDueAt()).contains(due);
+        assertThat(result.getTitle()).isEqualTo("Submit report");
+    }
+
+    @Test
     void createTask_rejectsBlankTitle() {
         final UUID listId = UUID.randomUUID();
         assertThatThrownBy(() -> taskService.createTask(listId, "  "))
