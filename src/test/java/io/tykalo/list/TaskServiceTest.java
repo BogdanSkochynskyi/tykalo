@@ -263,6 +263,110 @@ class TaskServiceTest {
     }
 
     @Test
+    void snoozeUntil_setsExplicitFutureDueDate() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        final Instant until = Instant.now().plus(3, ChronoUnit.DAYS);
+
+        final Task result = taskService.snoozeUntil(id, until);
+
+        assertThat(result.getDueAt()).contains(until);
+    }
+
+    @Test
+    void snoozeUntil_rejectsPastTarget() {
+        final UUID id = UUID.randomUUID();
+        assertThatThrownBy(() -> taskService.snoozeUntil(id, Instant.now().minusSeconds(60)))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(taskRepository, never()).findById(any());
+    }
+
+    @Test
+    void snoozeUntil_rejectsNonTodoTask() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        assertThatThrownBy(() -> taskService.snoozeUntil(id, Instant.now().plusSeconds(3600)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void updateTitle_stripsAndSets() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final Task result = taskService.updateTitle(id, "  New title  ");
+
+        assertThat(result.getTitle()).isEqualTo("New title");
+    }
+
+    @Test
+    void updateTitle_rejectsBlank() {
+        final UUID id = UUID.randomUUID();
+        assertThatThrownBy(() -> taskService.updateTitle(id, "   "))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(taskRepository, never()).findById(any());
+    }
+
+    @Test
+    void updateDescription_setsStrippedText() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final Task result = taskService.updateDescription(id, "  some details ");
+
+        assertThat(result.getDescription()).contains("some details");
+    }
+
+    @Test
+    void updateDescription_clearsOnBlank() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setDescription("old");
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final Task result = taskService.updateDescription(id, "   ");
+
+        assertThat(result.getDescription()).isEmpty();
+    }
+
+    @Test
+    void updateDueAt_setsDeadline() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        final Instant due = Instant.parse("2026-07-01T08:00:00Z");
+
+        final Task result = taskService.updateDueAt(id, due);
+
+        assertThat(result.getDueAt()).contains(due);
+    }
+
+    @Test
+    void updatePriority_setsPriority() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final Task result = taskService.updatePriority(id, Priority.HIGH);
+
+        assertThat(result.getPriority()).contains(Priority.HIGH);
+    }
+
+    @Test
+    void updateTitle_throws_whenTaskMissing() {
+        final UUID id = UUID.randomUUID();
+        when(taskRepository.findById(id)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> taskService.updateTitle(id, "New"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void deleteTask_softDeletes_bySettingArchivedAt() {
         // Arrange
         final UUID id = UUID.randomUUID();
