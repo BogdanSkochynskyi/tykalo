@@ -159,6 +159,56 @@ class TaskServiceTest {
     }
 
     @Test
+    void markDone_marksTodoTaskDone_andReportsChanged() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final TaskService.TaskToggle result = taskService.markDone(id);
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.task().getStatus()).isEqualTo(TaskStatus.DONE);
+    }
+
+    @Test
+    void markDone_isIdempotent_whenTaskAlreadyDone() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final TaskService.TaskToggle result = taskService.markDone(id);
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.task().getStatus()).isEqualTo(TaskStatus.DONE);
+    }
+
+    @Test
+    void reopen_revertsDoneTaskToTodo_andReportsChanged() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final TaskService.TaskToggle result = taskService.reopen(id);
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.task().getStatus()).isEqualTo(TaskStatus.TODO);
+    }
+
+    @Test
+    void reopen_isIdempotent_whenTaskAlreadyTodo() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        final TaskService.TaskToggle result = taskService.reopen(id);
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.task().getStatus()).isEqualTo(TaskStatus.TODO);
+    }
+
+    @Test
     void snoozeTask_pushesDueDateRelativeToNow() {
         // Arrange
         final UUID id = UUID.randomUUID();

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
@@ -86,5 +87,24 @@ class TelegramApiMessageGatewayTest {
 
         // Act + Assert — no exception propagates
         gateway.editMarkdown(42L, 777, "text", keyboard);
+    }
+
+    @Test
+    void answerCallback_buildsAnswerCallbackQueryWithToastText() throws TelegramApiException {
+        gateway.answerCallback("cb-1", "Done!");
+
+        final ArgumentCaptor<AnswerCallbackQuery> answer = ArgumentCaptor.captor();
+        verify(telegramClient).execute(answer.capture());
+        assertThat(answer.getValue().getCallbackQueryId()).isEqualTo("cb-1");
+        assertThat(answer.getValue().getText()).isEqualTo("Done!");
+    }
+
+    @Test
+    void answerCallback_swallowsTelegramErrors_soTheFlowSurvives() throws TelegramApiException {
+        when(telegramClient.execute(any(AnswerCallbackQuery.class)))
+                .thenThrow(new TelegramApiException("query is too old"));
+
+        // Act + Assert — no exception propagates
+        gateway.answerCallback("cb-1", "Done!");
     }
 }

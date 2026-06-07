@@ -16,6 +16,7 @@ import org.springframework.core.MethodIntrospector;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ReflectionUtils;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 
@@ -30,6 +31,7 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
 
     private final Map<String, CommandHandler> handlers = new HashMap<>();
     private final List<MessageHandler> messageHandlers = new ArrayList<>();
+    private final List<CallbackHandler> callbackHandlers = new ArrayList<>();
 
     @Override
     public Object postProcessAfterInitialization(final Object bean, final String beanName) {
@@ -42,6 +44,10 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
         if (bean instanceof MessageHandler messageHandler) {
             messageHandlers.add(messageHandler);
             log.debug("Registered message handler -> {}", bean.getClass().getName());
+        }
+        if (bean instanceof CallbackHandler callbackHandler) {
+            callbackHandlers.add(callbackHandler);
+            log.debug("Registered callback handler -> {}", bean.getClass().getName());
         }
         return bean;
     }
@@ -93,6 +99,25 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
             final Optional<String> reply = handler.handle(update);
             if (reply.isPresent()) {
                 return reply;
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Routes an inline-button click to the callback handlers in registration order, returning the
+     * first non-empty toast. Empty when the update carries no callback data or no handler claims it;
+     * the caller still answers the callback to dismiss Telegram's loading spinner.
+     */
+    public Optional<String> dispatchCallback(final Update update) {
+        final CallbackQuery query = update.getCallbackQuery();
+        if (query == null || query.getData() == null) {
+            return Optional.empty();
+        }
+        for (final CallbackHandler handler : callbackHandlers) {
+            final Optional<String> toast = handler.handle(query);
+            if (toast.isPresent()) {
+                return toast;
             }
         }
         return Optional.empty();

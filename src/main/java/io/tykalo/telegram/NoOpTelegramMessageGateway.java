@@ -24,4 +24,9 @@ public class NoOpTelegramMessageGateway implements TelegramMessageGateway {
                              final @Nullable InlineKeyboardMarkup keyboard) {
         log.debug("Polling disabled — suppressing list message edit {} in chat {}", messageId, chatId);
     }
+
+    @Override
+    public void answerCallback(final String callbackQueryId, final @Nullable String text) {
+        log.debug("Polling disabled — suppressing answer to callback query {}", callbackQueryId);
+    }
 }

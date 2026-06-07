@@ -65,6 +65,29 @@ class ListRendererTest {
     }
 
     @Test
+    void keyboard_givesDoneTaskAnUndoButton_carryingTaskUndoCallback() {
+        final Task done = task("Buy milk", TaskStatus.DONE);
+
+        final InlineKeyboardMarkup keyboard = renderer.keyboard(List.of(done));
+
+        final InlineKeyboardButton button = keyboard.getKeyboard().get(0).get(0);
+        assertThat(button.getText()).isEqualTo("↩️ 1");
+        assertThat(button.getCallbackData()).isEqualTo("task:undo:" + done.getId());
+    }
+
+    @Test
+    void keyboard_mixesDoneAndTodoButtons_byStatus() {
+        final Task done = task("Buy milk", TaskStatus.DONE);
+        final Task todo = task("Walk dog", TaskStatus.TODO);
+
+        final InlineKeyboardMarkup keyboard = renderer.keyboard(List.of(done, todo));
+
+        final List<InlineKeyboardButton> buttons = keyboard.getKeyboard().stream().flatMap(List::stream).toList();
+        assertThat(buttons).extracting(InlineKeyboardButton::getCallbackData)
+                .containsExactly("task:undo:" + done.getId(), "task:done:" + todo.getId());
+    }
+
+    @Test
     void keyboard_chunksButtonsAtFivePerRow() {
         final List<Task> six = List.of(
                 task("a", TaskStatus.TODO), task("b", TaskStatus.TODO), task("c", TaskStatus.TODO),

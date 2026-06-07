@@ -36,13 +36,16 @@ public class ListRenderer {
         return body.toString().stripTrailing();
     }
 
-    /** One {@code ✅ N} button per task, carrying {@code callback_data = task:done:{taskId}}. */
+    /**
+     * One toggle button per task. A TODO task gets {@code ✅ N} → {@code task:done:{taskId}}; a DONE
+     * task gets {@code ↩️ N} → {@code task:undo:{taskId}}, so the same row both completes and reopens.
+     */
     public InlineKeyboardMarkup keyboard(final List<Task> tasks) {
         final List<InlineKeyboardRow> rows = new ArrayList<>();
         InlineKeyboardRow row = new InlineKeyboardRow();
         int index = 1;
         for (final Task task : tasks) {
-            row.add(doneButton(index++, task));
+            row.add(toggleButton(index++, task));
             if (row.size() == BUTTONS_PER_ROW) {
                 rows.add(row);
                 row = new InlineKeyboardRow();
@@ -62,8 +65,14 @@ public class ListRenderer {
         return "%d\\. %s".formatted(index, title);
     }
 
-    private InlineKeyboardButton doneButton(final int index, final Task task) {
+    private InlineKeyboardButton toggleButton(final int index, final Task task) {
         final UUID id = Objects.requireNonNull(task.getId(), "task must be persisted before rendering");
+        if (task.getStatus() == TaskStatus.DONE) {
+            return InlineKeyboardButton.builder()
+                    .text("↩️ " + index)
+                    .callbackData("task:undo:" + id)
+                    .build();
+        }
         return InlineKeyboardButton.builder()
                 .text("✅ " + index)
                 .callbackData("task:done:" + id)

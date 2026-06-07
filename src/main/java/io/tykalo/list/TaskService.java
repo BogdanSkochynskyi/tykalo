@@ -64,6 +64,38 @@ public class TaskService {
         return task;
     }
 
+    /**
+     * Idempotently marks a task DONE. Unlike {@link #completeTask(UUID)} a repeat call is a no-op
+     * (a {@code changed=false} result), which is what an inline ✅ button needs: a double tap or a
+     * replayed callback must not toggle state twice.
+     */
+    @Transactional
+    public TaskToggle markDone(final UUID taskId) {
+        final Task task = require(taskId);
+        final boolean changed = task.getStatus() != TaskStatus.DONE;
+        if (changed) {
+            task.setStatus(TaskStatus.DONE);
+            log.info("Marked task done id={}", taskId);
+        }
+        return new TaskToggle(task, changed);
+    }
+
+    /** Idempotently reverts a task to TODO — the ↩️ undo of {@link #markDone(UUID)}. */
+    @Transactional
+    public TaskToggle reopen(final UUID taskId) {
+        final Task task = require(taskId);
+        final boolean changed = task.getStatus() != TaskStatus.TODO;
+        if (changed) {
+            task.setStatus(TaskStatus.TODO);
+            log.info("Reopened task id={}", taskId);
+        }
+        return new TaskToggle(task, changed);
+    }
+
+    /** Result of a status toggle: the affected task and whether this call actually changed it. */
+    public record TaskToggle(Task task, boolean changed) {
+    }
+
     /** Pushes the due date to {@code now + by}; only actionable (TODO) tasks can be snoozed. */
     @Transactional
     public Task snoozeTask(final UUID taskId, final Duration by) {

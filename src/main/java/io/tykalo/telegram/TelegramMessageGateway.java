@@ -24,4 +24,11 @@ public interface TelegramMessageGateway {
 
     /** Edits an existing message's text and inline keyboard in place. */
     void editMarkdown(long chatId, int messageId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
+
+    /**
+     * Answers a callback query, dismissing the loading spinner shown after an inline-button tap.
+     * Telegram requires this even when there is nothing to tell the user; pass {@code text} to show
+     * a short toast, or {@code null} to just dismiss the spinner.
+     */
+    void answerCallback(String callbackQueryId, @Nullable String text);
 }
