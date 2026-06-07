@@ -19,17 +19,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      # gradlew committed from Windows loses its executable bit, so `./gradlew`
+      # fails with exit 126 before any build step. Fail fast with a fixable message.
+      - name: Verify gradlew is executable
+        run: |
+          mode=$(git ls-files --stage gradlew | cut -d' ' -f1)
+          if [ "$mode" != "100755" ]; then
+            echo "::error file=gradlew::gradlew must be mode 100755 in git (found $mode). Fix with: git update-index --chmod=+x gradlew"
+            exit 1
+          fi
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
 
       # Configures Gradle, validates the wrapper, and caches the Gradle user home.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Integration tests provision their own Postgres via Testcontainers, which
       # uses the Docker daemon preinstalled on ubuntu-latest — no service containers

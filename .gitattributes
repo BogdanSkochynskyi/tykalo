@@ -1,0 +1,11 @@
+# Normalize line endings on commit; let Git pick the working-tree EOL per platform.
+* text=auto
+
+# Shell scripts and the Gradle wrapper run on Linux CI — force LF so the shebang
+# stays valid regardless of the committer's OS.
+*.sh    text eol=lf
+gradlew text eol=lf
+
+# Windows batch scripts need CRLF.
+*.bat       text eol=crlf
+gradlew.bat text eol=crlf
