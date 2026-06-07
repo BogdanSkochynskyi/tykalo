@@ -36,6 +36,23 @@ public class TaskService {
         return saved;
     }
 
+    /**
+     * Creates one task per title in a single transaction (so the batch is all-or-nothing). Blank
+     * titles are skipped and remaining titles are stripped; the returned list reflects what was
+     * actually persisted.
+     */
+    @Transactional
+    public List<Task> createTasks(final UUID listId, final List<String> titles) {
+        final TaskList list = listRepository.findById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
+        final List<Task> created = titles.stream()
+                .filter(title -> title != null && !title.isBlank())
+                .map(title -> taskRepository.save(Task.create(list, title.strip())))
+                .toList();
+        log.info("Bulk-created {} tasks in list={} owner={}", created.size(), list.getId(), list.getOwnerId());
+        return created;
+    }
+
     @Transactional
     public Task completeTask(final UUID taskId) {
         final Task task = require(taskId);

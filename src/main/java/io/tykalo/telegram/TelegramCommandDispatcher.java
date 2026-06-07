@@ -2,7 +2,9 @@ package io.tykalo.telegram;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +29,7 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 public class TelegramCommandDispatcher implements BeanPostProcessor {
 
     private final Map<String, CommandHandler> handlers = new HashMap<>();
+    private final List<MessageHandler> messageHandlers = new ArrayList<>();
 
     @Override
     public Object postProcessAfterInitialization(final Object bean, final String beanName) {
@@ -36,6 +39,10 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
                 (MethodIntrospector.MetadataLookup<TelegramCommand>) method ->
                         AnnotatedElementUtils.findMergedAnnotation(method, TelegramCommand.class));
         found.forEach((method, annotation) -> register(bean, method, annotation));
+        if (bean instanceof MessageHandler messageHandler) {
+            messageHandlers.add(messageHandler);
+            log.debug("Registered message handler -> {}", bean.getClass().getName());
+        }
         return bean;
     }
 
@@ -70,7 +77,7 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
         }
         final String command = extractCommand(message.getText());
         if (command == null) {
-            return Optional.empty();
+            return dispatchToMessageHandlers(update);
         }
         final CommandHandler handler = handlers.get(command);
         if (handler == null) {
@@ -78,6 +85,17 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
             return Optional.empty();
         }
         return Optional.ofNullable(handler.invoke(update));
+    }
+
+    /** Consults plain-message handlers in registration order, returning the first non-empty reply. */
+    private Optional<String> dispatchToMessageHandlers(final Update update) {
+        for (final MessageHandler handler : messageHandlers) {
+            final Optional<String> reply = handler.handle(update);
+            if (reply.isPresent()) {
+                return reply;
+            }
+        }
+        return Optional.empty();
     }
 
     private @Nullable String extractCommand(final String text) {

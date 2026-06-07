@@ -13,6 +13,9 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     List<Task> findByListId(UUID listId);
 
+    /** Live (non-archived) tasks in a list, oldest first — the order they render in the message. */
+    List<Task> findByListIdAndArchivedAtIsNullOrderByCreatedAtAsc(UUID listId);
+
     long countByListIdAndArchivedAtIsNull(UUID listId);
 
     /**
