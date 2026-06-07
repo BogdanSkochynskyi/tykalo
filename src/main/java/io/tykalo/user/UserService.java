@@ -1,5 +1,6 @@
 package io.tykalo.user;
 
+import java.time.LocalTime;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,29 @@ public class UserService {
         user.setTimezone(timezone);
         final User saved = userRepository.save(user);
         log.info("Updated timezone of user id={} to {}", saved.getId(), timezone);
+        return saved;
+    }
+
+    /**
+     * Persists a new quiet-hours window for the user. Callers validate the bounds at the boundary;
+     * this method just stores them (the user is merged, as it arrives detached).
+     */
+    @Transactional
+    public User updateQuietHours(final User user, final LocalTime start, final LocalTime end) {
+        user.setQuietHoursStart(start);
+        user.setQuietHoursEnd(end);
+        final User saved = userRepository.save(user);
+        log.info("Updated quiet hours of user id={} to {}-{}", saved.getId(), start, end);
+        return saved;
+    }
+
+    /** Clears the user's quiet-hours window, so no period is suppressed. */
+    @Transactional
+    public User disableQuietHours(final User user) {
+        user.setQuietHoursStart(null);
+        user.setQuietHoursEnd(null);
+        final User saved = userRepository.save(user);
+        log.info("Disabled quiet hours of user id={}", saved.getId());
         return saved;
     }
 
