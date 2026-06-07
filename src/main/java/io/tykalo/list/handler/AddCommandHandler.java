@@ -2,6 +2,7 @@ package io.tykalo.list.handler;
 
 import io.tykalo.list.CurrentContextService;
 import io.tykalo.list.DueDateParser;
+import io.tykalo.list.RecurrenceParser;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
@@ -28,7 +29,9 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  * per-user current list if one is set, otherwise the Inbox. The reply names the task's id and the
  * list it landed in. A leading deadline (ISO or basic natural language, e.g. {@code tomorrow 9am})
  * is parsed off the title by {@link DueDateParser} and stored as {@code dueAt}; a past deadline is
- * still accepted with a warning. Recurrence and Nudgers are layered on in later tickets.
+ * still accepted with a warning. A leading or trailing recurrence keyword (e.g. {@code daily},
+ * {@code weekends}, {@code every Monday}) is parsed off by {@link RecurrenceParser} and stored as a
+ * short rule on the task. Nudgers are layered on in later tickets.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,6 +45,7 @@ public class AddCommandHandler {
     private final CurrentContextService currentContext;
     private final TaskService taskService;
     private final DueDateParser dueDateParser;
+    private final RecurrenceParser recurrenceParser;
 
     @TelegramCommand("/add")
     public String add(final Update update) {
@@ -53,7 +57,8 @@ public class AddCommandHandler {
         final ZoneId zone = Optional.ofNullable(user.getTimezone()).orElse(ZoneOffset.UTC);
         final Instant now = Instant.now();
         final DueDateParser.Result parsed = dueDateParser.parse(args, zone, now);
-        final String title = parsed.title();
+        final RecurrenceParser.Result recurrence = recurrenceParser.parse(parsed.title());
+        final String title = recurrence.title();
         if (title.isBlank()) {
             return "Usage: /add <title> — I found a date but no task text.";
         }
@@ -67,19 +72,24 @@ public class AddCommandHandler {
             return "No list to add to. Create one with /list create <name>.";
         }
         final TaskList list = target.get();
-        final Task task = taskService.createTask(Objects.requireNonNull(list.getId()), title, parsed.dueAt());
-        return reply(list, task, parsed.dueAt(), zone, now);
+        final Task task = taskService.createTask(
+                Objects.requireNonNull(list.getId()), title, parsed.dueAt(), recurrence.recurrenceRule());
+        return reply(list, task, parsed.dueAt(), recurrence.recurrenceRule(), zone, now);
     }
 
     private String reply(final TaskList list, final Task task, final @Nullable Instant dueAt,
-                         final ZoneId zone, final Instant now) {
-        final String base = "✅ Added to \"%s\" — task %s".formatted(list.getName(), task.getId());
-        if (dueAt == null) {
-            return base;
+                         final @Nullable String recurrenceRule, final ZoneId zone, final Instant now) {
+        final StringBuilder out =
+                new StringBuilder("✅ Added to \"%s\" — task %s".formatted(list.getName(), task.getId()));
+        if (dueAt != null) {
+            final String due = DUE_FORMAT.format(dueAt.atZone(zone));
+            final String past = dueAt.isBefore(now) ? " ⚠️ (in the past)" : "";
+            out.append("%n🗓 due %s%s".formatted(due, past));
         }
-        final String due = DUE_FORMAT.format(dueAt.atZone(zone));
-        final String past = dueAt.isBefore(now) ? " ⚠️ (in the past)" : "";
-        return "%s%n🗓 due %s%s".formatted(base, due, past);
+        if (recurrenceRule != null) {
+            out.append("%n🔁 repeats %s".formatted(RecurrenceParser.describe(recurrenceRule)));
+        }
+        return out.toString();
     }
 
     private String argsOf(final Update update) {
