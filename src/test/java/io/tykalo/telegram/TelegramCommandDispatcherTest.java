@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -62,6 +63,38 @@ class TelegramCommandDispatcherTest {
         assertThatThrownBy(() -> dispatcher.dispatch(update))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("kaboom");
+    }
+
+    @Test
+    void dispatch_routesNonCommandText_toMessageHandler() {
+        final AtomicReference<Update> seen = new AtomicReference<>();
+        dispatcher.postProcessAfterInitialization((MessageHandler) update -> {
+            seen.set(update);
+            return Optional.of("bulk-added");
+        }, "messageHandler");
+
+        final Update update = TelegramUpdateFixtures.textMessage("milk\nbread");
+        assertThat(dispatcher.dispatch(update)).contains("bulk-added");
+        assertThat(seen.get()).isSameAs(update);
+    }
+
+    @Test
+    void dispatch_skipsMessageHandlers_forCommands() {
+        final AtomicReference<Boolean> called = new AtomicReference<>(false);
+        dispatcher.postProcessAfterInitialization((MessageHandler) update -> {
+            called.set(true);
+            return Optional.of("should not run");
+        }, "messageHandler");
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("/start"))).contains("started");
+        assertThat(called.get()).isFalse();
+    }
+
+    @Test
+    void dispatch_returnsEmpty_whenNoMessageHandlerClaimsText() {
+        dispatcher.postProcessAfterInitialization((MessageHandler) update -> Optional.empty(), "messageHandler");
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("unclaimed"))).isEmpty();
     }
 
     @Test

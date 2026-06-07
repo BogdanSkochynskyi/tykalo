@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -84,6 +85,42 @@ class TaskServiceTest {
         when(listRepository.findById(listId)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> taskService.createTask(listId, "Buy milk"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createTasks_savesOnePerNonBlankTitle_andStrips() {
+        // Arrange
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        final List<Task> created = taskService.createTasks(list.getId(), List.of("  milk ", "bread", "eggs"));
+
+        // Assert
+        assertThat(created).extracting(Task::getTitle).containsExactly("milk", "bread", "eggs");
+        assertThat(created).allMatch(task -> task.getListId().equals(list.getId()));
+    }
+
+    @Test
+    void createTasks_skipsBlankTitles() {
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final List<Task> created = taskService.createTasks(list.getId(), List.of("milk", "   ", "bread"));
+
+        assertThat(created).extracting(Task::getTitle).containsExactly("milk", "bread");
+        verify(taskRepository, times(2)).save(any(Task.class));
+    }
+
+    @Test
+    void createTasks_throws_whenListMissing() {
+        final UUID listId = UUID.randomUUID();
+        when(listRepository.findById(listId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> taskService.createTasks(listId, List.of("milk")))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(taskRepository, never()).save(any());
     }
 
     @Test
