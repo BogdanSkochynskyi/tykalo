@@ -3,6 +3,7 @@ package io.tykalo.telegram;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
@@ -59,6 +60,19 @@ public class TelegramApiMessageGateway implements TelegramMessageGateway {
             telegramClient.execute(edit);
         } catch (final TelegramApiException e) {
             log.warn("Failed to edit list message {} in chat {}", messageId, chatId, e);
+        }
+    }
+
+    @Override
+    public void answerCallback(final String callbackQueryId, final @Nullable String text) {
+        final AnswerCallbackQuery answer = AnswerCallbackQuery.builder()
+                .callbackQueryId(callbackQueryId)
+                .text(text)
+                .build();
+        try {
+            telegramClient.execute(answer);
+        } catch (final TelegramApiException e) {
+            log.warn("Failed to answer callback query {}", callbackQueryId, e);
         }
     }
 }

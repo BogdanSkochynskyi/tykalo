@@ -10,7 +10,10 @@ import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsume
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -32,11 +35,14 @@ public class TykaloBot implements SpringLongPollingBot {
 
     private final String botToken;
     private final TelegramCommandDispatcher dispatcher;
+    private final TelegramMessageGateway gateway;
     private final TelegramClient telegramClient;
 
-    public TykaloBot(final TelegramBotProperties properties, final TelegramCommandDispatcher dispatcher) {
+    public TykaloBot(final TelegramBotProperties properties, final TelegramCommandDispatcher dispatcher,
+                     final TelegramMessageGateway gateway) {
         this.botToken = properties.getToken();
         this.dispatcher = dispatcher;
+        this.gateway = gateway;
         this.telegramClient = new OkHttpTelegramClient(properties.getToken());
     }
 
@@ -56,9 +62,13 @@ public class TykaloBot implements SpringLongPollingBot {
     }
 
     void handle(final Update update) {
-        populateMdc(update.getMessage());
+        populateMdc(update);
         try {
-            dispatcher.dispatch(update).ifPresent(reply -> send(update, reply));
+            if (update.hasCallbackQuery()) {
+                answerCallback(update);
+            } else {
+                dispatcher.dispatch(update).ifPresent(reply -> send(update, reply));
+            }
         } catch (final RuntimeException e) {
             log.error("Failed to handle update {}", update.getUpdateId(), e);
         } finally {
@@ -67,15 +77,38 @@ public class TykaloBot implements SpringLongPollingBot {
         }
     }
 
-    private void populateMdc(final @Nullable Message message) {
+    /** Routes the callback to its handler, then always answers it so Telegram's spinner stops. */
+    private void answerCallback(final Update update) {
+        final CallbackQuery query = update.getCallbackQuery();
+        final String toast = dispatcher.dispatchCallback(update).orElse(null);
+        gateway.answerCallback(query.getId(), toast);
+    }
+
+    private void populateMdc(final Update update) {
+        if (update.hasCallbackQuery()) {
+            final CallbackQuery query = update.getCallbackQuery();
+            final MaybeInaccessibleMessage message = query.getMessage();
+            putChatId(message == null ? null : message.getChatId());
+            putUserId(query.getFrom());
+            return;
+        }
+        final Message message = update.getMessage();
         if (message == null) {
             return;
         }
-        if (message.getChatId() != null) {
-            MDC.put(MDC_CHAT_ID, String.valueOf(message.getChatId()));
+        putChatId(message.getChatId());
+        putUserId(message.getFrom());
+    }
+
+    private void putChatId(final @Nullable Long chatId) {
+        if (chatId != null) {
+            MDC.put(MDC_CHAT_ID, String.valueOf(chatId));
         }
-        if (message.getFrom() != null && message.getFrom().getId() != null) {
-            MDC.put(MDC_USER_ID, String.valueOf(message.getFrom().getId()));
+    }
+
+    private void putUserId(final @Nullable User from) {
+        if (from != null && from.getId() != null) {
+            MDC.put(MDC_USER_ID, String.valueOf(from.getId()));
         }
     }
 

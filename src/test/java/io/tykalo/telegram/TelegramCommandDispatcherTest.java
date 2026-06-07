@@ -98,6 +98,31 @@ class TelegramCommandDispatcherTest {
     }
 
     @Test
+    void dispatchCallback_routesToFirstClaimingHandler() {
+        final AtomicReference<String> seenData = new AtomicReference<>();
+        dispatcher.postProcessAfterInitialization((CallbackHandler) callback -> {
+            seenData.set(callback.getData());
+            return Optional.of("Done!");
+        }, "callbackHandler");
+
+        final Update update = TelegramUpdateFixtures.callbackQuery("task:done:abc");
+        assertThat(dispatcher.dispatchCallback(update)).contains("Done!");
+        assertThat(seenData.get()).isEqualTo("task:done:abc");
+    }
+
+    @Test
+    void dispatchCallback_returnsEmpty_whenNoHandlerClaimsCallback() {
+        dispatcher.postProcessAfterInitialization((CallbackHandler) callback -> Optional.empty(), "callbackHandler");
+
+        assertThat(dispatcher.dispatchCallback(TelegramUpdateFixtures.callbackQuery("noise"))).isEmpty();
+    }
+
+    @Test
+    void dispatchCallback_returnsEmpty_whenUpdateHasNoCallbackQuery() {
+        assertThat(dispatcher.dispatchCallback(TelegramUpdateFixtures.textMessage("plain"))).isEmpty();
+    }
+
+    @Test
     void register_rejectsDuplicateCommand() {
         class Duplicate {
             @TelegramCommand("/start")
