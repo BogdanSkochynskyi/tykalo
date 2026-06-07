@@ -119,18 +119,70 @@ public class TaskService {
     public record TaskToggle(Task task, boolean changed) {
     }
 
+    /** Replaces a task's title; the title must not be blank (it is the one required field). */
+    @Transactional
+    public Task updateTitle(final UUID taskId, final String title) {
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("Task title must not be blank");
+        }
+        final Task task = require(taskId);
+        task.setTitle(title.strip());
+        log.info("Updated title of task id={}", taskId);
+        return task;
+    }
+
+    /** Replaces a task's description (stored in UTC-agnostic text); blank clears it to {@code null}. */
+    @Transactional
+    public Task updateDescription(final UUID taskId, final String description) {
+        final Task task = require(taskId);
+        task.setDescription(description == null || description.isBlank() ? null : description.strip());
+        log.info("Updated description of task id={}", taskId);
+        return task;
+    }
+
+    /** Sets a task's deadline ({@code dueAt} is stored in UTC). */
+    @Transactional
+    public Task updateDueAt(final UUID taskId, final Instant dueAt) {
+        final Task task = require(taskId);
+        task.setDueAt(dueAt);
+        log.info("Updated dueAt of task id={} to {}", taskId, dueAt);
+        return task;
+    }
+
+    /** Sets a task's priority. */
+    @Transactional
+    public Task updatePriority(final UUID taskId, final Priority priority) {
+        final Task task = require(taskId);
+        task.setPriority(priority);
+        log.info("Updated priority of task id={} to {}", taskId, priority);
+        return task;
+    }
+
     /** Pushes the due date to {@code now + by}; only actionable (TODO) tasks can be snoozed. */
     @Transactional
     public Task snoozeTask(final UUID taskId, final Duration by) {
         if (by == null || by.isZero() || by.isNegative()) {
             throw new IllegalArgumentException("Snooze duration must be positive");
         }
+        return snoozeUntil(taskId, Instant.now().plus(by));
+    }
+
+    /**
+     * Pushes the due date to an explicit future {@code until}; the date-anchored sibling of
+     * {@link #snoozeTask(UUID, Duration)} for keyword targets ("tomorrow", "next week"). Only
+     * actionable (TODO) tasks can be snoozed.
+     */
+    @Transactional
+    public Task snoozeUntil(final UUID taskId, final Instant until) {
+        if (until == null || !until.isAfter(Instant.now())) {
+            throw new IllegalArgumentException("Snooze target must be in the future");
+        }
         final Task task = require(taskId);
         if (task.getStatus() != TaskStatus.TODO) {
             throw new IllegalStateException("Only TODO tasks can be snoozed: " + taskId);
         }
-        task.setDueAt(Instant.now().plus(by));
-        log.info("Snoozed task id={} until={}", taskId, task.getDueAt().orElseThrow());
+        task.setDueAt(until);
+        log.info("Snoozed task id={} until={}", taskId, until);
         return task;
     }
 
