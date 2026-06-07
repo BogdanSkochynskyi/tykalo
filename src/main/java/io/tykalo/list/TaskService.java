@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,13 +27,22 @@ public class TaskService {
 
     @Transactional
     public Task createTask(final UUID listId, final String title) {
+        return createTask(listId, title, null);
+    }
+
+    /** Creates a task with an optional deadline ({@code dueAt} is stored in UTC; {@code null} = no due date). */
+    @Transactional
+    public Task createTask(final UUID listId, final String title, final @Nullable Instant dueAt) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Task title must not be blank");
         }
         final TaskList list = listRepository.findById(listId)
                 .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
-        final Task saved = taskRepository.save(Task.create(list, title.strip()));
-        log.info("Created task id={} list={} owner={}", saved.getId(), list.getId(), saved.getOwnerId());
+        final Task task = Task.create(list, title.strip());
+        task.setDueAt(dueAt);
+        final Task saved = taskRepository.save(task);
+        log.info("Created task id={} list={} owner={} dueAt={}",
+                saved.getId(), list.getId(), saved.getOwnerId(), dueAt);
         return saved;
     }
 
