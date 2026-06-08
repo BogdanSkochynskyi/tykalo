@@ -13,9 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Exercises {@link NudgerService} against the real Flyway-migrated schema: the username lookup (with
- * its case-insensitivity), per-(owner, invitee) deduplication and the PENDING pairing both entry
- * points create. Uses the 990_00x tg_chat_id range (the singleton Postgres is shared and never reset
- * between integration-test classes).
+ * its case-insensitivity), per-(owner, invitee) deduplication, the PENDING pairing both entry points
+ * create, and the consent transition (accept/decline, idempotent). Uses the 990_00x tg_chat_id range
+ * (the singleton Postgres is shared and never reset between integration-test classes).
  */
 class NudgerServiceIntegrationTest extends AbstractIntegrationTest {
 
@@ -140,5 +140,65 @@ class NudgerServiceIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(nudgerService.acceptViaDeepLink(self, self.getId()))
                 .isInstanceOf(AcceptResult.SelfInvite.class);
+    }
+
+    @Test
+    void consent_accept_flipsPendingToActive_andCarriesOwner() {
+        // Arrange
+        final User owner = savedUser(990_015L, "owner9");
+        savedUser(990_016L, "helper9");
+        final UUID nudgerId = ((InviteResult.Invited) nudgerService.invite(owner, "helper9")).nudger().getId();
+
+        // Act
+        final ConsentResult result = nudgerService.consent(nudgerId, true);
+
+        // Assert
+        assertThat(result).asInstanceOf(type(ConsentResult.Accepted.class)).satisfies(accepted -> {
+            assertThat(accepted.nudger().getStatus()).isEqualTo(NudgerStatus.ACTIVE);
+            assertThat(accepted.owner().getId()).isEqualTo(owner.getId());
+        });
+        assertThat(nudgerRepository.findById(nudgerId)).get()
+                .extracting(Nudger::getStatus).isEqualTo(NudgerStatus.ACTIVE);
+    }
+
+    @Test
+    void consent_decline_flipsPendingToRejected() {
+        // Arrange
+        final User owner = savedUser(990_017L, "owner10");
+        savedUser(990_018L, "helper10");
+        final UUID nudgerId = ((InviteResult.Invited) nudgerService.invite(owner, "helper10")).nudger().getId();
+
+        // Act
+        final ConsentResult result = nudgerService.consent(nudgerId, false);
+
+        // Assert
+        assertThat(result).asInstanceOf(type(ConsentResult.Declined.class))
+                .satisfies(declined -> assertThat(declined.nudger().getStatus()).isEqualTo(NudgerStatus.REJECTED));
+        assertThat(nudgerRepository.findById(nudgerId)).get()
+                .extracting(Nudger::getStatus).isEqualTo(NudgerStatus.REJECTED);
+    }
+
+    @Test
+    void consent_isIdempotent_onReplayedTap() {
+        // Arrange
+        final User owner = savedUser(990_019L, "owner11");
+        savedUser(990_020L, "helper11");
+        final UUID nudgerId = ((InviteResult.Invited) nudgerService.invite(owner, "helper11")).nudger().getId();
+        nudgerService.consent(nudgerId, true);
+
+        // Act — a second tap (even the opposite choice) does not re-transition
+        final ConsentResult replay = nudgerService.consent(nudgerId, false);
+
+        // Assert
+        assertThat(replay).asInstanceOf(type(ConsentResult.AlreadyDecided.class))
+                .satisfies(already -> assertThat(already.nudger().getStatus()).isEqualTo(NudgerStatus.ACTIVE));
+        assertThat(nudgerRepository.findById(nudgerId)).get()
+                .extracting(Nudger::getStatus).isEqualTo(NudgerStatus.ACTIVE);
+    }
+
+    @Test
+    void consent_returnsNotFound_forUnknownNudger() {
+        assertThat(nudgerService.consent(UUID.randomUUID(), true))
+                .isInstanceOf(ConsentResult.NotFound.class);
     }
 }

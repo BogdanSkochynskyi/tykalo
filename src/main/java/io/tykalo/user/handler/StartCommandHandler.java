@@ -2,6 +2,7 @@ package io.tykalo.user.handler;
 
 import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
+import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
 import io.tykalo.telegram.TelegramCommand;
 import io.tykalo.user.User;
@@ -16,7 +17,8 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 /**
  * Handles {@code /start}: registers the user on first contact and greets them. A {@code /start
  * nudge_invite_<payload>} carries a nudger invite deep-link (TK-152) — the new user is wired up as
- * the encoded owner's pending nudger and the greeting notes who invited them.
+ * the encoded owner's pending nudger, the greeting notes who invited them, and the Yes/No consent
+ * prompt (TK-153) is sent as a follow-up message (its buttons can't ride the plain string reply).
  */
 @Component
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class StartCommandHandler {
 
     private final UserService userService;
     private final NudgerService nudgerService;
+    private final NudgerPromptService promptService;
 
     @TelegramCommand("/start")
     public String start(final Update update) {
@@ -38,7 +41,10 @@ public class StartCommandHandler {
         }
         final AcceptResult result = nudgerService.acceptViaDeepLink(invitee, ownerId.get());
         return switch (result) {
-            case AcceptResult.Invited invited -> invitedNote(invited.owner());
+            case AcceptResult.Invited invited -> {
+                promptService.sendConsentPrompt(invited.nudger(), invitee, invited.owner());
+                yield invitedNote(invited.owner());
+            }
             case AcceptResult.AlreadyInvited already -> invitedNote(already.owner());
             case AcceptResult.SelfInvite ignored -> "";
             case AcceptResult.OwnerGone ignored -> "";
@@ -47,7 +53,7 @@ public class StartCommandHandler {
 
     private String invitedNote(final User owner) {
         final String name = owner.getTgUsername() == null ? "Someone" : "@" + owner.getTgUsername();
-        return "\n\n🔔 %s invited you to be their Nudger. You'll be asked to confirm shortly.".formatted(name);
+        return "\n\n🔔 %s invited you to be their Nudger — please accept or decline below.".formatted(name);
     }
 
     private String greeting(final User user) {
