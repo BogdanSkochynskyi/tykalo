@@ -6,6 +6,7 @@ lombok = "1.18.46"
 testcontainers = "2.0.5"
 logstash-logback-encoder = "8.1"
 sentry = "8.9.0"
+shedlock = "7.7.0"   # NOT in the Spring Boot BOM — pin it (7.x targets Java 17+ and Spring 7 / Boot 4)
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -14,6 +15,7 @@ spring-boot-starter-validation = { module = "org.springframework.boot:spring-boo
 spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
+spring-boot-starter-quartz = { module = "org.springframework.boot:spring-boot-starter-quartz" }
 telegram-bots-starter = { module = "org.telegram:telegrambots-springboot-longpolling-starter", version.ref = "telegram-bots" }
 telegram-bots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegram-bots" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
@@ -29,6 +31,8 @@ jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-logback-encoder" }
 sentry-logback = { module = "io.sentry:sentry-logback", version.ref = "sentry" }
+shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

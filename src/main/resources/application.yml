@@ -18,6 +18,16 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  quartz:
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never          # Flyway owns the qrtz_* schema (V5)
+    properties:
+      org.quartz.scheduler.instanceName: TykaloScheduler
+      org.quartz.scheduler.instanceId: AUTO
+      org.quartz.jobStore.isClustered: true
+      org.quartz.jobStore.driverDelegateClass: org.quartz.impl.jdbcjobstore.PostgreSQLDelegate
+      org.quartz.jobStore.misfireThreshold: 60000
 
 telegram:
   bot:

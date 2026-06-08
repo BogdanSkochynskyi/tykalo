@@ -93,7 +93,7 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 .list();
 
         // Assert
-        assertThat(versions).contains("1", "2", "3", "4");
+        assertThat(versions).contains("1", "2", "3", "4", "5");
     }
 
     @Test
