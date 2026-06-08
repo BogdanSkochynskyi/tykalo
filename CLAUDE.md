@@ -23,7 +23,7 @@
 - **Gradle 9.x** (build tool, full Java 25 support)
 - **PostgreSQL 16+** (primary database)
 - **Redis 7+** (cache, per-user state, Telegram rate-limit queue)
-- **Quartz Scheduler 2.5+ + ShedLock 6.x** (cron jobs, distributed lock)
+- **Quartz Scheduler 2.5+ + ShedLock 7.x** (cron jobs, distributed lock — ShedLock 7.x is the line that targets Java 17+ and Spring 7 / Boot 4; 6.x predates Boot 4)
 - **Flyway 11.x** (DB migrations, versioned `V{n}__name.sql`)
 - **Spring Data JPA 4.x + Hibernate 7.1+** (repositories, JPA 3.2)
 - **org.telegram:telegrambots-springboot-longpolling-starter 10.0.0+** + **telegrambots-client 10.0.0+** (Telegram Bot API; new artifact layout in v10)
@@ -63,8 +63,8 @@
 [versions]
 spring-boot = "4.0.6"
 telegram-bots = "10.0.0"
-quartz = "2.5.0"
-shedlock = "6.4.0"
+# Quartz is BOM-managed via spring-boot-starter-quartz — do NOT pin (Boot 4.0.6 pulls 2.5.0).
+shedlock = "7.7.0"         # NOT in the Spring Boot BOM — pin it (7.x is the Java 17+ / Boot 4 line)
 testcontainers = "2.0.5"   # NOT in the Spring Boot BOM — pin it (Boot 4.0.6 pulls 2.0.5 transitively)
 jspecify = "1.0.0"
 # Flyway is BOM-managed — do NOT pin. Pull it via the spring-boot-flyway module (see nuances below).
@@ -73,8 +73,9 @@ jspecify = "1.0.0"
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }   # BOM-managed; needed for entities + Spring Data repositories
 telegram-bots-starter = { module = "org.telegram:telegrambots-springboot-longpolling-starter", version.ref = "telegram-bots" }
 telegram-bots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegram-bots" }
-quartz = { module = "org.quartz-scheduler:quartz", version.ref = "quartz" }
+spring-boot-starter-quartz = { module = "org.springframework.boot:spring-boot-starter-quartz" }   # BOM-managed; brings Quartz + autoconfig (clustered JDBC JobStore via spring.quartz.*)
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 spring-boot-flyway = { module = "org.springframework.boot:spring-boot-flyway" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
@@ -87,6 +88,7 @@ testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-jun
 - **Modularization** — Spring Boot 4 split monolithic JARs into smaller modules. If migrating from 3.x, update `build.gradle` to the new starter names.
 - **Flyway autoconfig moved into its own module.** Raw `org.flywaydb:flyway-core` does NOT activate Flyway in Boot 4 — migrations silently never run. Depend on `org.springframework.boot:spring-boot-flyway` (it carries flyway-core + the autoconfiguration), plus `org.flywaydb:flyway-database-postgresql` (Flyway 11 needs the per-DB module for Postgres).
 - **Testcontainers 2.0.x (what Boot 4.0.6 pulls) renamed everything.** Modules are now `org.testcontainers:testcontainers-postgresql` / `testcontainers-junit-jupiter` (was `postgresql` / `junit-jupiter`); the container class moved to `org.testcontainers.postgresql.PostgreSQLContainer` (the old `org.testcontainers.containers.*` one is deprecated → fails under `-Werror`) and is no longer generic (drop the `<?>`). Not in the Boot BOM — pin via `testcontainers-bom`.
+- **Scheduling = two mechanisms (TK-143).** Quartz (`spring-boot-starter-quartz`, `spring.quartz.job-store-type=jdbc`, clustered) coordinates dynamically-scheduled persistent jobs (future per-task reminders/escalation); ShedLock (`@EnableSchedulerLock` + a `JdbcTemplateLockProvider.usingDbTime()`) guards fixed-interval `@Scheduled` sweep methods — each cron method gets a uniquely named `@SchedulerLock`. Flyway owns both schemas: V5 carries the official Quartz Postgres DDL (lowercased, `DROP`/`COMMIT` stripped so it runs inside Flyway's tx) plus the `shedlock` table; set `spring.quartz.jdbc.initialize-schema=never` so Quartz doesn't try to create its own. Copy `scheduling/HeartbeatJob` as the cron template.
 - **Spring Framework 7 + Hibernate 7** — several JPA-API changes; never use deprecated `javax.persistence`, only `jakarta.persistence`.
 - **HTTP Service Clients** (new in 4.0) — declarative HTTP clients via annotations, an alternative to WebClient/RestTemplate. Consider for Google Calendar API and LLM providers.
 
