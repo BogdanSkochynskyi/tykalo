@@ -122,4 +122,24 @@ public class Task {
         task.status = TaskStatus.TODO;
         return task;
     }
+
+    /**
+     * Builds the next instance of a recurring task (TK-146): a fresh TODO carrying over the
+     * {@code previous} task's list, owner, title, description, priority, recurrence rule and tags,
+     * with the supplied {@code nextDueAt}. The calendar link ({@code gcalEventId}) is intentionally
+     * not copied — each occurrence is its own event — and the instance starts un-archived.
+     */
+    public static Task recurringInstance(final Task previous, final Instant nextDueAt) {
+        final Task task = new Task();
+        task.listId = previous.listId;
+        task.ownerId = previous.ownerId;
+        task.title = previous.title;
+        task.description = previous.description;
+        task.priority = previous.priority;
+        task.recurrenceRule = previous.recurrenceRule;
+        task.tags = new ArrayList<>(previous.tags);
+        task.dueAt = nextDueAt;
+        task.status = TaskStatus.TODO;
+        return task;
+    }
 }

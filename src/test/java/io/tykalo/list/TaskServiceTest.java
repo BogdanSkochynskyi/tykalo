@@ -34,6 +34,12 @@ class TaskServiceTest {
     @Mock
     private ListRepository listRepository;
 
+    @Mock
+    private io.tykalo.user.UserRepository userRepository;
+
+    @Mock
+    private RecurrenceCalculator recurrenceCalculator;
+
     @InjectMocks
     private TaskService taskService;
 
@@ -164,6 +170,129 @@ class TaskServiceTest {
         // Act + Assert
         assertThatThrownBy(() -> taskService.completeTask(id))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    private Task recurringDueTask(final UUID id, final String rule, final Instant dueAt) {
+        final Task task = todo(id);
+        task.setRecurrenceRule(rule);
+        task.setDueAt(dueAt);
+        task.setDescription("details");
+        task.setPriority(Priority.HIGH);
+        task.setTags(List.of("home"));
+        return task;
+    }
+
+    @Test
+    void completeTask_spawnsNextInstance_whenRecurringAndDue() {
+        // Arrange
+        final UUID id = UUID.randomUUID();
+        final Instant due = Instant.parse("2026-06-08T06:00:00Z");
+        final Instant next = Instant.parse("2026-06-09T06:00:00Z");
+        final Task task = recurringDueTask(id, "FREQ=DAILY", due);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        when(userRepository.findById(task.getOwnerId())).thenReturn(Optional.empty());
+        when(recurrenceCalculator.nextOccurrence(eq("FREQ=DAILY"), eq(due), any()))
+                .thenReturn(Optional.of(next));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        taskService.completeTask(id);
+
+        // Assert
+        final ArgumentCaptor<Task> saved = ArgumentCaptor.forClass(Task.class);
+        verify(taskRepository).save(saved.capture());
+        final Task created = saved.getValue();
+        assertThat(created.getStatus()).isEqualTo(TaskStatus.TODO);
+        assertThat(created.getDueAt()).contains(next);
+        assertThat(created.getTitle()).isEqualTo(task.getTitle());
+        assertThat(created.getDescription()).contains("details");
+        assertThat(created.getPriority()).contains(Priority.HIGH);
+        assertThat(created.getRecurrenceRule()).contains("FREQ=DAILY");
+        assertThat(created.getTags()).containsExactly("home");
+        assertThat(created.getListId()).isEqualTo(task.getListId());
+        assertThat(created.getArchivedAt()).isNull();
+    }
+
+    @Test
+    void markDone_spawnsNextInstance_whenRecurringAndDue() {
+        final UUID id = UUID.randomUUID();
+        final Instant due = Instant.parse("2026-06-08T06:00:00Z");
+        final Instant next = Instant.parse("2026-06-15T06:00:00Z");
+        final Task task = recurringDueTask(id, "FREQ=WEEKLY", due);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        when(userRepository.findById(task.getOwnerId())).thenReturn(Optional.empty());
+        when(recurrenceCalculator.nextOccurrence(eq("FREQ=WEEKLY"), eq(due), any()))
+                .thenReturn(Optional.of(next));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.markDone(id);
+
+        final ArgumentCaptor<Task> saved = ArgumentCaptor.forClass(Task.class);
+        verify(taskRepository).save(saved.capture());
+        assertThat(saved.getValue().getDueAt()).contains(next);
+    }
+
+    @Test
+    void markDone_doesNotSpawn_whenAlreadyDone() {
+        final UUID id = UUID.randomUUID();
+        final Task task = recurringDueTask(id, "FREQ=DAILY", Instant.parse("2026-06-08T06:00:00Z"));
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(id);
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void completeTask_doesNotSpawn_whenNoRecurrenceRule() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setDueAt(Instant.parse("2026-06-08T06:00:00Z"));
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.completeTask(id);
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void completeTask_doesNotSpawn_whenRecurringButNoDueDate() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setRecurrenceRule("FREQ=DAILY");
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.completeTask(id);
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void completeTask_doesNotSpawn_whenTaskArchived() {
+        final UUID id = UUID.randomUUID();
+        final Task task = recurringDueTask(id, "FREQ=DAILY", Instant.parse("2026-06-08T06:00:00Z"));
+        task.setArchivedAt(Instant.now());
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.completeTask(id);
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void completeTask_doesNotSpawn_whenCalculatorReturnsEmpty() {
+        final UUID id = UUID.randomUUID();
+        final Instant due = Instant.parse("2026-06-08T06:00:00Z");
+        final Task task = recurringDueTask(id, "FREQ=MONTHLY", due);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        when(userRepository.findById(task.getOwnerId())).thenReturn(Optional.empty());
+        when(recurrenceCalculator.nextOccurrence(eq("FREQ=MONTHLY"), eq(due), any()))
+                .thenReturn(Optional.empty());
+
+        taskService.completeTask(id);
+
+        verify(taskRepository, never()).save(any());
     }
 
     @Test

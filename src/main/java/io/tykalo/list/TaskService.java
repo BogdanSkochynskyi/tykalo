@@ -1,9 +1,11 @@
 package io.tykalo.list;
 
+import io.tykalo.user.UserRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +27,8 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final ListRepository listRepository;
+    private final UserRepository userRepository;
+    private final RecurrenceCalculator recurrenceCalculator;
 
     @Transactional
     public Task createTask(final UUID listId, final String title) {
@@ -84,6 +88,7 @@ public class TaskService {
         }
         task.setStatus(TaskStatus.DONE);
         log.info("Completed task id={}", taskId);
+        expandRecurrence(task);
         return task;
     }
 
@@ -99,6 +104,7 @@ public class TaskService {
         if (changed) {
             task.setStatus(TaskStatus.DONE);
             log.info("Marked task done id={}", taskId);
+            expandRecurrence(task);
         }
         return new TaskToggle(task, changed);
     }
@@ -245,6 +251,37 @@ public class TaskService {
     @Transactional(readOnly = true)
     public Optional<Task> find(final UUID taskId) {
         return taskRepository.findById(taskId);
+    }
+
+    /**
+     * On completion of a recurring task (TK-146) creates its next instance in the same transaction.
+     * Skips when the task has no recurrence rule, no {@code dueAt} to anchor from, or was manually
+     * archived. The next due date is computed by {@link RecurrenceCalculator} in the owner's timezone
+     * (falling back to UTC), so the wall-clock time-of-day carries over.
+     */
+    private void expandRecurrence(final Task completed) {
+        if (completed.getArchivedAt() != null
+                || completed.getRecurrenceRule().isEmpty()
+                || completed.getDueAt().isEmpty()) {
+            return;
+        }
+        final ZoneId zone = ownerZone(completed.getOwnerId());
+        final Optional<Instant> nextDueAt = recurrenceCalculator.nextOccurrence(
+                completed.getRecurrenceRule().get(), completed.getDueAt().get(), zone);
+        if (nextDueAt.isEmpty()) {
+            log.debug("No next occurrence for task id={} rule={}", completed.getId(),
+                    completed.getRecurrenceRule().get());
+            return;
+        }
+        final Task next = taskRepository.save(Task.recurringInstance(completed, nextDueAt.get()));
+        log.info("Recurring task id={} spawned next instance id={} dueAt={}",
+                completed.getId(), next.getId(), nextDueAt.get());
+    }
+
+    private ZoneId ownerZone(final UUID ownerId) {
+        return userRepository.findById(ownerId)
+                .map(user -> user.getTimezone() == null ? (ZoneId) ZoneOffset.UTC : user.getTimezone())
+                .orElse(ZoneOffset.UTC);
     }
 
     private Task require(final UUID taskId) {
