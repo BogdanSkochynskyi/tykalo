@@ -58,6 +58,23 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
                               @Param("endExclusive") Instant endExclusive);
 
     /**
+     * Still-actionable {@code PROJECT}-list tasks past their due date — the overdue-reminder cron's
+     * input. {@code TODO}, {@code dueAt < now}, not archived, joined to a live {@link TaskList} of
+     * type {@code PROJECT}. Ordered by due time so the oldest overdue task is processed first.
+     */
+    @Query("""
+            SELECT t FROM Task t, TaskList l
+            WHERE t.listId = l.id
+              AND l.type = io.tykalo.list.ListType.PROJECT
+              AND l.archivedAt IS NULL
+              AND t.status = io.tykalo.list.TaskStatus.TODO
+              AND t.archivedAt IS NULL
+              AND t.dueAt < :now
+            ORDER BY t.dueAt ASC
+            """)
+    List<Task> findOverdueProjectTasks(@Param("now") Instant now);
+
+    /**
      * An owner's still-actionable {@code PROJECT}-list tasks due within the half-open window
      * {@code [startInclusive, endExclusive)} — the morning digest's content. Joins to a live
      * {@link TaskList} of type {@code PROJECT}; results are ordered by due time then title so the
