@@ -11,16 +11,17 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class TelegramBotPropertiesTest {
 
     @Test
-    void getToken_returnsConfiguredValue() {
-        final TelegramBotProperties properties = new TelegramBotProperties("123456:ABC-DEF");
+    void getToken_andUsername_returnConfiguredValues() {
+        final TelegramBotProperties properties = new TelegramBotProperties("123456:ABC-DEF", "TykaloBot");
 
         assertThat(properties.getToken()).isEqualTo("123456:ABC-DEF");
+        assertThat(properties.getUsername()).isEqualTo("TykaloBot");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", "\t"})
     void constructor_throwsWithClearMessage_whenTokenBlank(final String blank) {
-        assertThatThrownBy(() -> new TelegramBotProperties(blank))
+        assertThatThrownBy(() -> new TelegramBotProperties(blank, ""))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("TELEGRAM_BOT_TOKEN");
     }

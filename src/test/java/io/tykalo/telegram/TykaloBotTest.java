@@ -36,7 +36,7 @@ class TykaloBotTest {
 
     @BeforeEach
     void setUp() {
-        bot = new TykaloBot(new TelegramBotProperties("test-token"), dispatcher, gateway);
+        bot = new TykaloBot(new TelegramBotProperties("test-token", ""), dispatcher, gateway);
     }
 
     @AfterEach
