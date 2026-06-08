@@ -40,6 +40,9 @@ class TaskServiceTest {
     @Mock
     private RecurrenceCalculator recurrenceCalculator;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private TaskService taskService;
 
