@@ -90,6 +90,9 @@ public class Task {
     @Column(name = "archived_at")
     private @Nullable Instant archivedAt;
 
+    @Column(name = "nudgers_private", nullable = false)
+    private boolean nudgersPrivate;
+
     public Optional<String> getDescription() {
         return Optional.ofNullable(description);
     }
@@ -125,9 +128,10 @@ public class Task {
 
     /**
      * Builds the next instance of a recurring task (TK-146): a fresh TODO carrying over the
-     * {@code previous} task's list, owner, title, description, priority, recurrence rule and tags,
-     * with the supplied {@code nextDueAt}. The calendar link ({@code gcalEventId}) is intentionally
-     * not copied — each occurrence is its own event — and the instance starts un-archived.
+     * {@code previous} task's list, owner, title, description, priority, recurrence rule, tags and
+     * {@code nudgersPrivate} flag, with the supplied {@code nextDueAt}. The calendar link
+     * ({@code gcalEventId}) and per-task Nudger assignments are intentionally not copied — each
+     * occurrence is its own event — and the instance starts un-archived.
      */
     public static Task recurringInstance(final Task previous, final Instant nextDueAt) {
         final Task task = new Task();
@@ -140,6 +144,7 @@ public class Task {
         task.tags = new ArrayList<>(previous.tags);
         task.dueAt = nextDueAt;
         task.status = TaskStatus.TODO;
+        task.nudgersPrivate = previous.nudgersPrivate;
         return task;
     }
 }
