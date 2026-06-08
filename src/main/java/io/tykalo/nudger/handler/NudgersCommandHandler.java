@@ -1,12 +1,11 @@
 package io.tykalo.nudger.handler;
 
-import io.tykalo.list.ListRenderer;
 import io.tykalo.nudger.InviteResult;
 import io.tykalo.nudger.NudgeInvite;
+import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
 import io.tykalo.telegram.TelegramBotProperties;
 import io.tykalo.telegram.TelegramCommand;
-import io.tykalo.telegram.TelegramMessageGateway;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
 import java.util.Locale;
@@ -22,9 +21,10 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  * command is structured as a subcommand router from the start.
  *
  * <p>{@code /nudgers add @username} invites a trusted contact. If they are already on the bot, a
- * {@code PENDING} pairing is created and they get a heads-up message (the Yes/No consent prompt is
- * TK-153). If they are not registered yet, the owner gets a {@code t.me/<bot>?start=...} deep-link to
- * forward; opening it routes through {@code /start} ({@link io.tykalo.user.handler.StartCommandHandler}).
+ * {@code PENDING} pairing is created and they get the Yes/No consent prompt (TK-153, via
+ * {@link NudgerPromptService}). If they are not registered yet, the owner gets a
+ * {@code t.me/<bot>?start=...} deep-link to forward; opening it routes through {@code /start}
+ * ({@link io.tykalo.user.handler.StartCommandHandler}).
  */
 @Component
 @RequiredArgsConstructor
@@ -34,7 +34,7 @@ public class NudgersCommandHandler {
 
     private final UserService userService;
     private final NudgerService nudgerService;
-    private final TelegramMessageGateway gateway;
+    private final NudgerPromptService promptService;
     private final TelegramBotProperties botProperties;
 
     @TelegramCommand("/nudgers")
@@ -56,7 +56,7 @@ public class NudgersCommandHandler {
         final InviteResult result = nudgerService.invite(owner, username);
         return switch (result) {
             case InviteResult.Invited invited -> {
-                notifyInvitee(owner, invited.invitee());
+                promptService.sendConsentPrompt(invited.nudger(), invited.invitee(), owner);
                 yield "✅ Invited @%s as your Nudger. They'll need to accept before any escalations reach them."
                         .formatted(invited.invitee().getTgUsername());
             }
@@ -65,14 +65,6 @@ public class NudgersCommandHandler {
             case InviteResult.SelfInvite ignored -> "You can't add yourself as a Nudger 🙂";
             case InviteResult.NotRegistered notRegistered -> notRegisteredReply(owner, notRegistered.username());
         };
-    }
-
-    private void notifyInvitee(final User owner, final User invitee) {
-        final String ownerName = owner.getTgUsername() == null ? "Someone" : "@" + owner.getTgUsername();
-        final String text = ("🔔 %s wants to add you as their Nudger on Tykalo — you'd get the occasional "
-                + "nudge to remind them about an overdue task. They'll need your OK first; "
-                + "you'll be asked to confirm shortly.").formatted(ownerName);
-        gateway.sendMarkdown(invitee.getTgChatId(), ListRenderer.escape(text), null);
     }
 
     private String notRegisteredReply(final User owner, final String username) {

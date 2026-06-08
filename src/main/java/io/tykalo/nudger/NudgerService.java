@@ -76,6 +76,33 @@ public class NudgerService {
         return new AcceptResult.Invited(created, owner.get());
     }
 
+    /**
+     * Records the invitee's Yes/No answer to a consent prompt (TK-153). A {@code PENDING} pairing is
+     * flipped to {@code ACTIVE} (accept) or {@code REJECTED} (decline); the resolved owner rides along
+     * so the caller can notify them. A pairing that is no longer {@code PENDING} — a replayed or
+     * double-tapped callback — yields {@link ConsentResult.AlreadyDecided} and is left untouched, so
+     * the transition (and the owner notification) happens exactly once.
+     */
+    @Transactional
+    public ConsentResult consent(final UUID nudgerId, final boolean accept) {
+        final Optional<Nudger> found = nudgerRepository.findById(nudgerId);
+        if (found.isEmpty()) {
+            return new ConsentResult.NotFound();
+        }
+        final Nudger nudger = found.get();
+        if (nudger.getStatus() != NudgerStatus.PENDING) {
+            return new ConsentResult.AlreadyDecided(nudger);
+        }
+        nudger.setStatus(accept ? NudgerStatus.ACTIVE : NudgerStatus.REJECTED);
+        final Nudger saved = nudgerRepository.save(nudger);
+        final User owner = userRepository.findById(saved.getOwnerId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Nudger %s references missing owner %s".formatted(saved.getId(), saved.getOwnerId())));
+        log.info("Nudger {} {} the invite from owner {}",
+                saved.getId(), accept ? "accepted" : "declined", owner.getId());
+        return accept ? new ConsentResult.Accepted(saved, owner) : new ConsentResult.Declined(saved, owner);
+    }
+
     private String normalizeUsername(final String raw) {
         final String trimmed = raw.strip();
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;

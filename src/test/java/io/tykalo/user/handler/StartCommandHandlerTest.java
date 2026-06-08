@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
 import io.tykalo.nudger.Nudger;
+import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
 import io.tykalo.telegram.TelegramUpdateFixtures;
 import io.tykalo.user.User;
@@ -29,6 +30,8 @@ class StartCommandHandlerTest {
     private UserService userService;
     @Mock
     private NudgerService nudgerService;
+    @Mock
+    private NudgerPromptService promptService;
 
     @InjectMocks
     private StartCommandHandler handler;
@@ -69,15 +72,17 @@ class StartCommandHandlerTest {
                 "/start " + NudgeInvite.payloadFor(ownerId), 42L, "bob", "uk");
         final User invitee = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
         final User owner = User.create(7L, "alice", ZoneId.of("Europe/Kyiv"), "uk");
+        final Nudger nudger = new Nudger();
         when(userService.findOrCreate(update)).thenReturn(invitee);
         when(nudgerService.acceptViaDeepLink(eq(invitee), eq(ownerId)))
-                .thenReturn(new AcceptResult.Invited(new Nudger(), owner));
+                .thenReturn(new AcceptResult.Invited(nudger, owner));
 
         // Act
         final String reply = handler.start(update);
 
         // Assert
         verify(nudgerService).acceptViaDeepLink(invitee, ownerId);
+        verify(promptService).sendConsentPrompt(nudger, invitee, owner);
         assertThat(reply)
                 .contains("Welcome to Tykalo")
                 .contains("@alice invited you to be their Nudger");

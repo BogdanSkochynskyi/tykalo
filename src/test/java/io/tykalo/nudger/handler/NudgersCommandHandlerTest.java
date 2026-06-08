@@ -3,16 +3,15 @@ package io.tykalo.nudger.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.tykalo.nudger.InviteResult;
 import io.tykalo.nudger.Nudger;
+import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
 import io.tykalo.telegram.TelegramBotProperties;
-import io.tykalo.telegram.TelegramMessageGateway;
 import io.tykalo.telegram.TelegramUpdateFixtures;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
@@ -33,7 +32,7 @@ class NudgersCommandHandlerTest {
     @Mock
     private NudgerService nudgerService;
     @Mock
-    private TelegramMessageGateway gateway;
+    private NudgerPromptService promptService;
     @Mock
     private TelegramBotProperties botProperties;
 
@@ -41,21 +40,22 @@ class NudgersCommandHandlerTest {
     private NudgersCommandHandler handler;
 
     @Test
-    void add_createsPairing_andNotifiesRegisteredInvitee() {
+    void add_createsPairing_andSendsConsentPromptToRegisteredInvitee() {
         // Arrange
         final Update update = TelegramUpdateFixtures.command("/nudgers add @helper", 1L, "owner", "en");
         final User owner = user(1L, "owner");
         final User invitee = user(2L, "helper");
+        final Nudger nudger = Nudger.invite(owner, invitee);
         when(userService.findOrCreate(update)).thenReturn(owner);
         when(nudgerService.invite(owner, "@helper"))
-                .thenReturn(new InviteResult.Invited(Nudger.invite(owner, invitee), invitee));
+                .thenReturn(new InviteResult.Invited(nudger, invitee));
 
         // Act
         final String reply = handler.nudgers(update);
 
         // Assert
         assertThat(reply).contains("Invited @helper");
-        verify(gateway).sendMarkdown(eq(2L), any(String.class), isNull());
+        verify(promptService).sendConsentPrompt(nudger, invitee, owner);
     }
 
     @Test
@@ -74,7 +74,7 @@ class NudgersCommandHandlerTest {
         assertThat(reply)
                 .contains("@ghost isn't on Tykalo yet")
                 .contains("https://t.me/TykaloBot?start=nudge_invite_");
-        verify(gateway, never()).sendMarkdown(any(Long.class), any(), any());
+        verify(promptService, never()).sendConsentPrompt(any(), any(), any());
     }
 
     @Test
