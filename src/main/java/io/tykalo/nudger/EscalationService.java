@@ -121,9 +121,10 @@ public class EscalationService {
         }
         try {
             final String body = renderer.render(owner, task, policy.getRevealFields(), now);
-            gateway.sendMarkdown(nudgerUser.getTgChatId(), body, null);
-            nudgeLogRepository.save(NudgeLog.of(EscalationTargetType.TASK, task.getId(), nudger.getId(),
-                    policy.getLevel(), now, body));
+            final NudgeLog entry = NudgeLog.of(EscalationTargetType.TASK, task.getId(), nudger.getId(),
+                    policy.getLevel(), now, body);
+            gateway.sendMarkdown(nudgerUser.getTgChatId(), body, renderer.ackKeyboard(entry.getId()));
+            nudgeLogRepository.save(entry);
             sent.add(key);
             log.info("Escalated level={} task id={} to nudger id={} (user id={})",
                     policy.getLevel(), task.getId(), nudger.getId(), nudgerUser.getId());

@@ -235,6 +235,33 @@ class EscalationServiceTest {
     }
 
     @Test
+    void runEscalations_attachesAckKeyboardBuiltFromTheLoggedEscalationId() {
+        // Arrange — one active nudger, nothing sent yet
+        final User owner = user(810_070L);
+        final User nudgerUser = user(810_071L);
+        final Task task = task(owner);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, nudgerUser), List.of(pair), ladder(task), List.of(), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        final org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup keyboard =
+                org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup.builder()
+                        .keyboard(List.of()).build();
+        when(renderer.ackKeyboard(any())).thenReturn(keyboard);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — the keyboard is forwarded, and it was built from the very id the log row carries
+        verify(gateway).sendMarkdown(eq(810_071L), eq("body"), eq(keyboard));
+        final ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(renderer).ackKeyboard(idCaptor.capture());
+        final ArgumentCaptor<NudgeLog> logCaptor = ArgumentCaptor.forClass(NudgeLog.class);
+        verify(nudgeLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getId()).isEqualTo(idCaptor.getValue());
+    }
+
+    @Test
     void runEscalations_isolatesFailure_andContinuesToOtherNudgers() {
         // Arrange — two active nudgers; sending to the first throws
         final User owner = user(810_060L);

@@ -6,7 +6,12 @@ import io.tykalo.list.TaskViewRenderer;
 import io.tykalo.user.User;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
  * Renders a single escalation message in Telegram <b>MarkdownV2</b>, addressed to a nudger about an
@@ -20,6 +25,12 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class EscalationRenderer {
+
+    /**
+     * Callback-data prefix for the "I reminded" button; the {@code nudge_log} id follows it
+     * ({@code nudge:ack:{logId}}). {@link io.tykalo.nudger.handler.NudgeAckCallbackHandler} parses it.
+     */
+    public static final String ACK_CALLBACK_PREFIX = "nudge:ack:";
 
     private static final String HEADER = "👁 *A task needs a nudge*";
 
@@ -36,6 +47,21 @@ public class EscalationRenderer {
                 .append(" has a task overdue by ").append(ListRenderer.escape(overdueFor)).append('.');
         appendReveal(body, task, reveal);
         return body.toString();
+    }
+
+    /**
+     * The single-button inline keyboard carried by an escalation message: "✅ I reminded", whose
+     * {@code callback_data} is {@link #ACK_CALLBACK_PREFIX} + the {@code nudge_log} id, so the tap can be
+     * traced back to the exact escalation it acknowledges.
+     */
+    public InlineKeyboardMarkup ackKeyboard(final UUID nudgeLogId) {
+        final InlineKeyboardButton button = InlineKeyboardButton.builder()
+                .text("✅ I reminded")
+                .callbackData(ACK_CALLBACK_PREFIX + nudgeLogId)
+                .build();
+        return InlineKeyboardMarkup.builder()
+                .keyboard(List.of(new InlineKeyboardRow(button)))
+                .build();
     }
 
     private void appendReveal(final StringBuilder body, final Task task, final RevealField reveal) {
