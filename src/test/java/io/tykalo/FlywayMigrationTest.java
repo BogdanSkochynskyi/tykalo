@@ -108,7 +108,7 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 .list();
 
         // Assert
-        assertThat(versions).contains("1", "2", "3", "4", "5", "6", "7");
+        assertThat(versions).contains("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
@@ -263,6 +263,108 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
 
         // Assert
         assertThat(indexes).contains("idx_list_messages_list_id_chat_id");
+    }
+
+    @Test
+    void nudgersTable_hasExpectedColumns() {
+        // Act
+        final List<String> columns = columnsOf("nudgers");
+
+        // Assert
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "owner_id", "nudger_user_id", "status", "karma_score", "added_at");
+    }
+
+    @Test
+    void nudgers_defaultStatusPendingAndKarmaZero() {
+        // Arrange
+        final UUID ownerId = insertUser(7007L);
+        final UUID nudgerUserId = insertUser(7008L);
+        final UUID id = UUID.randomUUID();
+        jdbcClient.sql("INSERT INTO nudgers (id, owner_id, nudger_user_id) VALUES (?, ?, ?)")
+                .param(id).param(ownerId).param(nudgerUserId)
+                .update();
+
+        // Act
+        final String status = jdbcClient.sql("SELECT status FROM nudgers WHERE id = ?")
+                .param(id).query(String.class).single();
+        final Integer karma = jdbcClient.sql("SELECT karma_score FROM nudgers WHERE id = ?")
+                .param(id).query(Integer.class).single();
+
+        // Assert
+        assertThat(status).isEqualTo("PENDING");
+        assertThat(karma).isZero();
+    }
+
+    @Test
+    void nudgers_rejectInvalidStatus() {
+        // Arrange
+        final UUID ownerId = insertUser(7009L);
+        final UUID nudgerUserId = insertUser(7010L);
+
+        // Act / Assert
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO nudgers (id, owner_id, nudger_user_id, status) VALUES (?, ?, ?, 'BOGUS')")
+                .param(UUID.randomUUID()).param(ownerId).param(nudgerUserId)
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void escalationPoliciesTable_hasExpectedColumns() {
+        // Act
+        final List<String> columns = columnsOf("escalation_policies");
+
+        // Assert
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "target_type", "target_id", "level", "delay_minutes", "reveal_fields");
+    }
+
+    @Test
+    void escalationPolicies_rejectInvalidRevealField() {
+        // Act / Assert
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO escalation_policies (id, target_type, target_id, level, delay_minutes, reveal_fields) "
+                        + "VALUES (?, 'TASK', ?, 1, 120, 'BOGUS')")
+                .param(UUID.randomUUID()).param(UUID.randomUUID())
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void nudgeLogTable_hasExpectedColumns() {
+        // Act
+        final List<String> columns = columnsOf("nudge_log");
+
+        // Assert
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "target_type", "target_id", "nudger_id", "level",
+                "sent_at", "acknowledged_at", "message_template");
+    }
+
+    @Test
+    void nudgeLog_rejectsMissingNudger() {
+        // Act / Assert — FK to nudgers(id) is enforced
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO nudge_log (id, target_type, target_id, nudger_id, level) "
+                        + "VALUES (?, 'TASK', ?, ?, 1)")
+                .param(UUID.randomUUID()).param(UUID.randomUUID()).param(UUID.randomUUID())
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void nudgerTables_areIndexedOnExpectedColumns() {
+        // Act
+        final List<String> indexes = jdbcClient
+                .sql("SELECT indexname FROM pg_indexes WHERE tablename IN ('nudgers', 'escalation_policies', 'nudge_log')")
+                .query(String.class)
+                .list();
+
+        // Assert
+        assertThat(indexes).contains(
+                "idx_nudgers_owner_id", "idx_nudgers_nudger_user_id",
+                "idx_escalation_policies_target", "idx_nudge_log_target", "idx_nudge_log_nudger_id");
     }
 
     private List<String> columnsOf(final String table) {
