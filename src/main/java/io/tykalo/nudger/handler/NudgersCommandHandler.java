@@ -2,14 +2,19 @@ package io.tykalo.nudger.handler;
 
 import io.tykalo.nudger.InviteResult;
 import io.tykalo.nudger.NudgeInvite;
+import io.tykalo.nudger.NudgerActionResult;
 import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
+import io.tykalo.nudger.NudgerStatus;
+import io.tykalo.nudger.NudgerSummary;
 import io.tykalo.telegram.TelegramBotProperties;
 import io.tykalo.telegram.TelegramCommand;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -30,7 +35,14 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 @RequiredArgsConstructor
 public class NudgersCommandHandler {
 
-    private static final String USAGE = "Usage: /nudgers add @username";
+    private static final String USAGE = """
+            Usage:
+            /nudgers list
+            /nudgers add @username
+            /nudgers remove @username
+            /nudgers pause @username
+            /nudgers resume @username""";
+    private static final String CONFIRM = "confirm";
 
     private final UserService userService;
     private final NudgerService nudgerService;
@@ -43,9 +55,99 @@ public class NudgersCommandHandler {
         final String subcommand = parts[0].toLowerCase(Locale.ROOT);
         final String rest = parts.length > 1 ? parts[1].strip() : "";
         return switch (subcommand) {
+            case "list", "" -> list(update);
             case "add" -> add(update, rest);
+            case "remove" -> remove(update, rest);
+            case "pause" -> pause(update, rest);
+            case "resume" -> resume(update, rest);
             default -> USAGE;
         };
+    }
+
+    private String list(final Update update) {
+        final User owner = userService.findOrCreate(update);
+        final List<NudgerSummary> active = nudgerService.listActive(owner);
+        if (active.isEmpty()) {
+            return "You have no active Nudgers yet. Add one with /nudgers add @username";
+        }
+        return active.stream()
+                .map(n -> "• @%s — karma %d".formatted(n.username(), n.karmaScore()))
+                .collect(Collectors.joining("\n", "Your active Nudgers:\n", ""));
+    }
+
+    private String remove(final Update update, final String rest) {
+        if (rest.isBlank()) {
+            return "Usage: /nudgers remove @username";
+        }
+        final String[] parts = rest.split("\\s+");
+        final boolean confirmed = parts.length > 1 && parts[parts.length - 1].equalsIgnoreCase(CONFIRM);
+        final User owner = userService.findOrCreate(update);
+        if (!confirmed) {
+            return switch (nudgerService.find(owner, parts[0])) {
+                case NudgerActionResult.Ok found -> removeConfirmPrompt(found.invitee());
+                case NudgerActionResult.NotANudger notANudger -> notANudger(notANudger.username());
+                case NudgerActionResult.NotRegistered notRegistered -> notRegistered(notRegistered.username());
+                case NudgerActionResult.Unchanged ignored -> USAGE;
+            };
+        }
+        return switch (nudgerService.remove(owner, parts[0])) {
+            case NudgerActionResult.Ok ok -> "🗑️ Removed @%s as your Nudger.".formatted(ok.invitee().getTgUsername());
+            case NudgerActionResult.NotANudger notANudger -> notANudger(notANudger.username());
+            case NudgerActionResult.NotRegistered notRegistered -> notRegistered(notRegistered.username());
+            case NudgerActionResult.Unchanged ignored -> USAGE;
+        };
+    }
+
+    private String pause(final Update update, final String rest) {
+        if (rest.isBlank()) {
+            return "Usage: /nudgers pause @username";
+        }
+        final User owner = userService.findOrCreate(update);
+        final NudgerActionResult result = nudgerService.pause(owner, rest.split("\\s+")[0]);
+        return switch (result) {
+            case NudgerActionResult.Ok ok ->
+                    "⏸ Paused @%s. They won't receive escalations until you /nudgers resume them."
+                            .formatted(ok.invitee().getTgUsername());
+            case NudgerActionResult.Unchanged unchanged -> unchanged.nudger().getStatus() == NudgerStatus.PAUSED
+                    ? "@%s is already paused.".formatted(unchanged.invitee().getTgUsername())
+                    : "Only active Nudgers can be paused (@%s is %s)."
+                            .formatted(unchanged.invitee().getTgUsername(), unchanged.nudger().getStatus());
+            case NudgerActionResult.NotANudger notANudger -> notANudger(notANudger.username());
+            case NudgerActionResult.NotRegistered notRegistered -> notRegistered(notRegistered.username());
+        };
+    }
+
+    private String resume(final Update update, final String rest) {
+        if (rest.isBlank()) {
+            return "Usage: /nudgers resume @username";
+        }
+        final User owner = userService.findOrCreate(update);
+        final NudgerActionResult result = nudgerService.resume(owner, rest.split("\\s+")[0]);
+        return switch (result) {
+            case NudgerActionResult.Ok ok ->
+                    "▶️ Resumed @%s. They'll receive escalations again.".formatted(ok.invitee().getTgUsername());
+            case NudgerActionResult.Unchanged unchanged -> unchanged.nudger().getStatus() == NudgerStatus.ACTIVE
+                    ? "@%s is already active.".formatted(unchanged.invitee().getTgUsername())
+                    : "Only paused Nudgers can be resumed (@%s is %s)."
+                            .formatted(unchanged.invitee().getTgUsername(), unchanged.nudger().getStatus());
+            case NudgerActionResult.NotANudger notANudger -> notANudger(notANudger.username());
+            case NudgerActionResult.NotRegistered notRegistered -> notRegistered(notRegistered.username());
+        };
+    }
+
+    private String removeConfirmPrompt(final User invitee) {
+        return """
+                ⚠️ Remove @%s as your Nudger? This deletes the pairing and its reminder history.
+                To confirm, send: /nudgers remove @%s confirm"""
+                .formatted(invitee.getTgUsername(), invitee.getTgUsername());
+    }
+
+    private String notANudger(final String username) {
+        return "@%s isn't one of your Nudgers. See /nudgers list".formatted(username);
+    }
+
+    private String notRegistered(final String username) {
+        return "@%s isn't on Tykalo yet, so they can't be one of your Nudgers.".formatted(username);
     }
 
     private String add(final Update update, final String username) {
