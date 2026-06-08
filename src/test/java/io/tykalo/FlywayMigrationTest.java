@@ -39,7 +39,22 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "tg_chat_id", "tg_username", "timezone",
-                "quiet_hours_start", "quiet_hours_end", "locale", "created_at");
+                "quiet_hours_start", "quiet_hours_end", "locale", "created_at", "digest_hour");
+    }
+
+    @Test
+    void digestHour_defaultsTo8() {
+        // Arrange
+        insertUser(1006L);
+
+        // Act
+        final Integer digestHour = jdbcClient
+                .sql("SELECT digest_hour FROM users WHERE tg_chat_id = 1006")
+                .query(Integer.class)
+                .single();
+
+        // Assert
+        assertThat(digestHour).isEqualTo(8);
     }
 
     @Test
@@ -93,7 +108,7 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 .list();
 
         // Assert
-        assertThat(versions).contains("1", "2", "3", "4", "5");
+        assertThat(versions).contains("1", "2", "3", "4", "5", "6");
     }
 
     @Test

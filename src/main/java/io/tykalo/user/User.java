@@ -33,6 +33,7 @@ public class User {
 
     static final LocalTime DEFAULT_QUIET_HOURS_START = LocalTime.of(22, 0);
     static final LocalTime DEFAULT_QUIET_HOURS_END = LocalTime.of(7, 0);
+    static final int DEFAULT_DIGEST_HOUR = 8;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -57,13 +58,16 @@ public class User {
     @Column(name = "locale", length = 10)
     private @Nullable String locale;
 
+    @Column(name = "digest_hour")
+    private @Nullable Integer digestHour;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private @Nullable Instant createdAt;
 
     /**
-     * Builds a new user with the default quiet hours (22:00–07:00). The id and
-     * {@code createdAt} are populated by the persistence layer on insert.
+     * Builds a new user with the default quiet hours (22:00–07:00) and an 08:00 morning digest.
+     * The id and {@code createdAt} are populated by the persistence layer on insert.
      */
     public static User create(final Long tgChatId, final @Nullable String tgUsername,
                               final ZoneId timezone, final @Nullable String locale) {
@@ -74,6 +78,7 @@ public class User {
         user.locale = locale;
         user.quietHoursStart = DEFAULT_QUIET_HOURS_START;
         user.quietHoursEnd = DEFAULT_QUIET_HOURS_END;
+        user.digestHour = DEFAULT_DIGEST_HOUR;
         return user;
     }
 }

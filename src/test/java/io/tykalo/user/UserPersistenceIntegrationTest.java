@@ -37,7 +37,25 @@ class UserPersistenceIntegrationTest extends AbstractIntegrationTest {
             assertThat(user.getLocale()).isEqualTo("uk");
             assertThat(user.getQuietHoursStart()).isEqualTo(LocalTime.of(22, 0));
             assertThat(user.getQuietHoursEnd()).isEqualTo(LocalTime.of(7, 0));
+            assertThat(user.getDigestHour()).isEqualTo(8);
             assertThat(user.getCreatedAt()).isNotNull();
         });
+    }
+
+    @Test
+    void findByDigestHourIsNotNull_returnsOnlyDigestEnabledUsers() {
+        // Arrange — one user keeps the default digest hour, one has it disabled
+        final User enabled = userRepository.save(
+                User.create(555_002L, "enabled", ZoneId.of("Europe/Kyiv"), "uk"));
+        final User disabled = User.create(555_003L, "disabled", ZoneId.of("Europe/Kyiv"), "uk");
+        disabled.setDigestHour(null);
+        userRepository.save(disabled);
+
+        // Act
+        final var withDigest = userRepository.findByDigestHourIsNotNull();
+
+        // Assert
+        assertThat(withDigest).extracting(User::getId).contains(enabled.getId());
+        assertThat(withDigest).extracting(User::getId).doesNotContain(disabled.getId());
     }
 }

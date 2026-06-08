@@ -210,6 +210,18 @@ public class TaskService {
         return taskRepository.findDueBetween(ownerId, startInclusive, endExclusive);
     }
 
+    /**
+     * An owner's still-actionable {@code PROJECT}-list tasks due during their local calendar day in
+     * {@code zone} — the morning digest's content, ordered by due time then title.
+     */
+    @Transactional(readOnly = true)
+    public List<Task> findProjectTasksDueToday(final UUID ownerId, final ZoneId zone) {
+        final LocalDate today = LocalDate.now(zone);
+        final Instant startInclusive = today.atStartOfDay(zone).toInstant();
+        final Instant endExclusive = today.plusDays(1).atStartOfDay(zone).toInstant();
+        return taskRepository.findProjectTasksDueBetween(ownerId, startInclusive, endExclusive);
+    }
+
     /** An owner's still-actionable tasks whose due date has already passed. */
     @Transactional(readOnly = true)
     public List<Task> findOverdue(final UUID ownerId) {
