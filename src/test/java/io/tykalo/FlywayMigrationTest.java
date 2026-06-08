@@ -108,7 +108,7 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 .list();
 
         // Assert
-        assertThat(versions).contains("1", "2", "3", "4", "5", "6");
+        assertThat(versions).contains("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -217,6 +217,43 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void reminderLogTable_hasExpectedColumns() {
+        // Act
+        final List<String> columns = columnsOf("reminder_log");
+
+        // Assert
+        assertThat(columns).containsExactlyInAnyOrder("id", "task_id", "level", "sent_at");
+    }
+
+    @Test
+    void reminderLog_rejectsDuplicateTaskLevel() {
+        // Arrange — a task to point the FK at
+        final UUID ownerId = insertUser(6006L);
+        final UUID listId = insertList(ownerId);
+        final UUID taskId = UUID.randomUUID();
+        jdbcClient.sql("INSERT INTO tasks (id, list_id, owner_id, title) VALUES (?, ?, ?, 'overdue')")
+                .param(taskId).param(listId).param(ownerId)
+                .update();
+        insertReminderLog(taskId, 1);
+
+        // Act / Assert — UNIQUE(task_id, level) backstop
+        assertThatThrownBy(() -> insertReminderLog(taskId, 1))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void reminderLog_isIndexedOnTaskId() {
+        // Act
+        final List<String> indexes = jdbcClient
+                .sql("SELECT indexname FROM pg_indexes WHERE tablename = 'reminder_log'")
+                .query(String.class)
+                .list();
+
+        // Assert
+        assertThat(indexes).contains("idx_reminder_log_task_id");
+    }
+
+    @Test
     void listMessages_isIndexedOnListIdAndChatId() {
         // Act
         final List<String> indexes = jdbcClient
@@ -243,6 +280,14 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 .param(tgChatId)
                 .update();
         return id;
+    }
+
+    private void insertReminderLog(final UUID taskId, final int level) {
+        jdbcClient.sql("INSERT INTO reminder_log (id, task_id, level, sent_at) VALUES (?, ?, ?, now())")
+                .param(UUID.randomUUID())
+                .param(taskId)
+                .param(level)
+                .update();
     }
 
     private UUID insertList(final UUID ownerId) {
