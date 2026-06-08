@@ -10,6 +10,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 class EscalationRendererTest {
 
@@ -101,5 +103,21 @@ class EscalationRendererTest {
 
         // Assert
         assertThat(body).contains("Your friend");
+    }
+
+    @Test
+    void ackKeyboard_buildsSingleReminderButton_carryingTheNudgeLogId() {
+        // Arrange
+        final UUID nudgeLogId = UUID.randomUUID();
+
+        // Act
+        final InlineKeyboardMarkup keyboard = renderer.ackKeyboard(nudgeLogId);
+
+        // Assert — one row, one button, callback data is the ack prefix + the log id
+        assertThat(keyboard.getKeyboard()).hasSize(1);
+        assertThat(keyboard.getKeyboard().getFirst()).hasSize(1);
+        final InlineKeyboardButton button = keyboard.getKeyboard().getFirst().getFirst();
+        assertThat(button.getText()).isEqualTo("✅ I reminded");
+        assertThat(button.getCallbackData()).isEqualTo("nudge:ack:" + nudgeLogId);
     }
 }

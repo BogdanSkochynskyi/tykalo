@@ -4,8 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -23,6 +21,11 @@ import org.jspecify.annotations.Nullable;
  * escalation cron (TK-156) writes one row per level actually sent; {@code acknowledgedAt} is stamped
  * when the nudger taps "I reminded" (TK-157). {@code targetId} is polymorphic (no FK); {@code nudgerId}
  * references {@link Nudger}.
+ *
+ * <p>The id is <b>app-assigned</b> in {@link #of} rather than DB/Hibernate-generated: the escalation
+ * cron needs the id while building the "✅ I reminded" inline button <em>before</em> the row is saved
+ * (so a thrown send still leaves no row and is retried), and the button's {@code callback_data} carries
+ * this id back for acknowledgement.
  */
 @Entity
 @Table(name = "nudge_log")
@@ -33,8 +36,7 @@ import org.jspecify.annotations.Nullable;
 public class NudgeLog {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private @Nullable UUID id;
+    private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "target_type", nullable = false, length = 4)
@@ -74,6 +76,7 @@ public class NudgeLog {
     public static NudgeLog of(final EscalationTargetType targetType, final UUID targetId, final UUID nudgerId,
                               final int level, final Instant sentAt, final @Nullable String messageTemplate) {
         final NudgeLog log = new NudgeLog();
+        log.id = UUID.randomUUID();
         log.targetType = targetType;
         log.targetId = targetId;
         log.nudgerId = nudgerId;
