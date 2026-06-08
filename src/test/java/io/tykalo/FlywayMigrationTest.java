@@ -130,7 +130,8 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "list_id", "owner_id", "title", "description", "due_at", "priority",
-                "status", "recurrence_rule", "gcal_event_id", "tags", "created_at", "updated_at", "archived_at");
+                "status", "recurrence_rule", "gcal_event_id", "tags", "created_at", "updated_at", "archived_at",
+                "nudgers_private");
     }
 
     @Test

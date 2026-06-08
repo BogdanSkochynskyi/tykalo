@@ -20,6 +20,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,8 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
  * Escalates overdue Project tasks to their owners' nudgers (TK-156). Driven every 30 minutes by
  * {@code EscalationJob}: for the sweep instant it walks every overdue {@code PROJECT} task and, per
  * task, determines the highest escalation rung whose {@code delay_minutes} past {@code due_at} has
- * elapsed, then delivers that rung to each {@link NudgerStatus#ACTIVE} nudger who has not already
- * received it. Splitting this out of the job keeps it unit-testable without Quartz/ShedLock.
+ * elapsed, then delivers that rung to each recipient nudger who has not already received it. The
+ * recipient set honours the task's per-task assignment (TK-158): a private task is skipped, an
+ * assigned task narrows to its pinned nudgers (still intersected with the {@link NudgerStatus#ACTIVE}
+ * set), and an unassigned task falls back to the owner's whole active set. Splitting this out of the
+ * job keeps it unit-testable without Quartz/ShedLock.
  *
  * <p>"Current level" rule: only the single most-advanced elapsed rung is considered, so a nudger
  * added later — or the first sweep after downtime — receives the current level rather than a burst of
@@ -51,6 +55,7 @@ public class EscalationService {
     private final NudgerRepository nudgerRepository;
     private final EscalationPolicyRepository escalationPolicyRepository;
     private final NudgeLogRepository nudgeLogRepository;
+    private final TaskNudgerService taskNudgerService;
     private final EscalationRenderer renderer;
     private final TelegramMessageGateway gateway;
 
@@ -70,25 +75,31 @@ public class EscalationService {
         final Map<UUID, User> nudgerUsers = usersById(activeNudgers.values().stream()
                 .flatMap(List::stream).map(Nudger::getNudgerUserId).toList());
         final Map<UUID, List<EscalationPolicy>> ladders = laddersByTask(taskIds);
+        final Map<UUID, Set<UUID>> assignments = taskNudgerService.assignmentsByTask(taskIds);
         final Set<SentKey> sent = sentKeys(taskIds);
 
         int delivered = 0;
         for (final Task task : overdue) {
-            delivered += escalateTask(task, owners, activeNudgers, nudgerUsers, ladders, sent, now);
+            delivered += escalateTask(task, owners, activeNudgers, nudgerUsers, ladders, assignments, sent, now);
         }
         log.info("Escalation sweep at {} over {} overdue task(s) sent {} nudge(s)", now, overdue.size(), delivered);
     }
 
     private int escalateTask(final Task task, final Map<UUID, User> owners,
                              final Map<UUID, List<Nudger>> activeNudgers, final Map<UUID, User> nudgerUsers,
-                             final Map<UUID, List<EscalationPolicy>> ladders, final Set<SentKey> sent,
+                             final Map<UUID, List<EscalationPolicy>> ladders,
+                             final Map<UUID, Set<UUID>> assignments, final Set<SentKey> sent,
                              final Instant now) {
         final User owner = owners.get(task.getOwnerId());
         if (owner == null) {
             log.warn("Skipping escalation for task id={} — owner id={} not found", task.getId(), task.getOwnerId());
             return 0;
         }
-        final List<Nudger> nudgers = activeNudgers.getOrDefault(owner.getId(), List.of());
+        if (task.isNudgersPrivate()) {
+            return 0;
+        }
+        final List<Nudger> nudgers = recipientsFor(task, activeNudgers.getOrDefault(owner.getId(), List.of()),
+                assignments.get(task.getId()));
         if (nudgers.isEmpty()) {
             return 0;
         }
@@ -133,6 +144,20 @@ public class EscalationService {
             log.warn("Failed to escalate task id={} to nudger id={}", task.getId(), nudger.getId(), e);
             return false;
         }
+    }
+
+    /**
+     * The Nudgers an overdue task escalates to: its per-task assignment intersected with the owner's
+     * active set (TK-158), or the whole active set when the task has no assignment (the default). A
+     * Nudger pinned to the task but no longer active drops out, since {@code active} is already the
+     * ACTIVE-only list.
+     */
+    private static List<Nudger> recipientsFor(final Task task, final List<Nudger> active,
+                                              final @Nullable Set<UUID> assignedNudgerIds) {
+        if (assignedNudgerIds == null || assignedNudgerIds.isEmpty()) {
+            return active;
+        }
+        return active.stream().filter(nudger -> assignedNudgerIds.contains(nudger.getId())).toList();
     }
 
     /**
