@@ -12,6 +12,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ public class TaskService {
     private final ListRepository listRepository;
     private final UserRepository userRepository;
     private final RecurrenceCalculator recurrenceCalculator;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public Task createTask(final UUID listId, final String title) {
@@ -60,6 +62,7 @@ public class TaskService {
         final Task saved = taskRepository.save(task);
         log.info("Created task id={} list={} owner={} dueAt={} recurrence={}",
                 saved.getId(), list.getId(), saved.getOwnerId(), dueAt, recurrenceRule);
+        eventPublisher.publishEvent(new TaskCreatedEvent(saved, list.getType()));
         return saved;
     }
 
@@ -76,6 +79,7 @@ public class TaskService {
                 .filter(title -> title != null && !title.isBlank())
                 .map(title -> taskRepository.save(Task.create(list, title.strip())))
                 .toList();
+        created.forEach(task -> eventPublisher.publishEvent(new TaskCreatedEvent(task, list.getType())));
         log.info("Bulk-created {} tasks in list={} owner={}", created.size(), list.getId(), list.getOwnerId());
         return created;
     }
