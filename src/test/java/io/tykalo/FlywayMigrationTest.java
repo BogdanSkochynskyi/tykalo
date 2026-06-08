@@ -39,7 +39,8 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "tg_chat_id", "tg_username", "timezone",
-                "quiet_hours_start", "quiet_hours_end", "locale", "created_at", "digest_hour");
+                "quiet_hours_start", "quiet_hours_end", "locale", "created_at", "digest_hour",
+                "nudger_daily_limit");
     }
 
     @Test
@@ -55,6 +56,21 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
 
         // Assert
         assertThat(digestHour).isEqualTo(8);
+    }
+
+    @Test
+    void nudgerDailyLimit_defaultsTo3() {
+        // Arrange
+        insertUser(1007L);
+
+        // Act
+        final Integer limit = jdbcClient
+                .sql("SELECT nudger_daily_limit FROM users WHERE tg_chat_id = 1007")
+                .query(Integer.class)
+                .single();
+
+        // Assert
+        assertThat(limit).isEqualTo(3);
     }
 
     @Test
@@ -130,7 +146,8 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "list_id", "owner_id", "title", "description", "due_at", "priority",
-                "status", "recurrence_rule", "gcal_event_id", "tags", "created_at", "updated_at", "archived_at");
+                "status", "recurrence_rule", "gcal_event_id", "tags", "created_at", "updated_at", "archived_at",
+                "nudgers_private");
     }
 
     @Test

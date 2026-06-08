@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +49,9 @@ class EscalationServiceTest {
 
     @Mock
     private NudgeLogRepository nudgeLogRepository;
+
+    @Mock
+    private TaskNudgerService taskNudgerService;
 
     @Mock
     private EscalationRenderer renderer;
@@ -88,13 +93,33 @@ class EscalationServiceTest {
 
     private void stubLoad(final Task task, final List<User> users, final List<Nudger> nudgers,
                           final List<EscalationPolicy> ladder, final List<NudgeLog> alreadySent, final Instant now) {
+        stubLoad(task, users, nudgers, ladder, alreadySent, Map.of(), now);
+    }
+
+    private void stubLoad(final Task task, final List<User> users, final List<Nudger> nudgers,
+                          final List<EscalationPolicy> ladder, final List<NudgeLog> alreadySent,
+                          final Map<UUID, Set<UUID>> assignments, final Instant now) {
         when(taskRepository.findOverdueProjectTasks(now)).thenReturn(List.of(task));
         when(userRepository.findAllById(any())).thenReturn(users);
         when(nudgerRepository.findByOwnerIdInAndStatus(any(), eq(NudgerStatus.ACTIVE))).thenReturn(nudgers);
         when(escalationPolicyRepository.findByTargetTypeAndTargetIdInOrderByLevelAsc(eq(EscalationTargetType.TASK), any()))
                 .thenReturn(ladder);
+        when(taskNudgerService.assignmentsByTask(any())).thenReturn(assignments);
         when(nudgeLogRepository.findByTargetTypeAndTargetIdIn(eq(EscalationTargetType.TASK), any()))
                 .thenReturn(alreadySent);
+    }
+
+    private void stubMultiTaskLoad(final List<Task> tasks, final List<User> users, final List<Nudger> nudgers,
+                                   final Instant now) {
+        final List<EscalationPolicy> ladders = tasks.stream().flatMap(task -> ladder(task).stream()).toList();
+        when(taskRepository.findOverdueProjectTasks(now)).thenReturn(tasks);
+        when(userRepository.findAllById(any())).thenReturn(users);
+        when(nudgerRepository.findByOwnerIdInAndStatus(any(), eq(NudgerStatus.ACTIVE))).thenReturn(nudgers);
+        when(escalationPolicyRepository.findByTargetTypeAndTargetIdInOrderByLevelAsc(eq(EscalationTargetType.TASK), any()))
+                .thenReturn(ladders);
+        when(taskNudgerService.assignmentsByTask(any())).thenReturn(Map.of());
+        when(nudgeLogRepository.findByTargetTypeAndTargetIdIn(eq(EscalationTargetType.TASK), any()))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -221,6 +246,66 @@ class EscalationServiceTest {
     }
 
     @Test
+    void runEscalations_skipsTask_whenMarkedPrivate() {
+        // Arrange — elapsed and an active nudger, but the task is private (TK-158)
+        final User owner = user(810_080L);
+        final User nudgerUser = user(810_081L);
+        final Task task = task(owner);
+        task.setNudgersPrivate(true);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, nudgerUser), List.of(pair), ladder(task), List.of(), now);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert
+        verify(gateway, never()).sendMarkdown(anyLong(), any(), any());
+        verify(nudgeLogRepository, never()).save(any());
+    }
+
+    @Test
+    void runEscalations_sendsOnlyToAssignedNudger_whenTaskPinsASubset() {
+        // Arrange — two active nudgers, but only A is pinned to this task (TK-158)
+        final User owner = user(810_090L);
+        final User nudgerA = user(810_091L);
+        final User nudgerB = user(810_092L);
+        final Task task = task(owner);
+        final Nudger pairA = activeNudger(owner, nudgerA);
+        final Nudger pairB = activeNudger(owner, nudgerB);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, nudgerA, nudgerB), List.of(pairA, pairB), ladder(task), List.of(),
+                Map.of(task.getId(), Set.of(pairA.getId())), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — only the pinned nudger is reached
+        verify(gateway).sendMarkdown(eq(810_091L), eq("body"), isNull());
+        verify(gateway, never()).sendMarkdown(eq(810_092L), any(), any());
+    }
+
+    @Test
+    void runEscalations_skipsTask_whenAssignedNudgerIsNoLongerActive() {
+        // Arrange — the only active nudger is not the one pinned to the task
+        final User owner = user(810_100L);
+        final User activeUser = user(810_101L);
+        final Task task = task(owner);
+        final Nudger activePair = activeNudger(owner, activeUser);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, activeUser), List.of(activePair), ladder(task), List.of(),
+                Map.of(task.getId(), Set.of(UUID.randomUUID())), now);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — the pinned nudger dropped out of the active set, so nobody is reached
+        verify(gateway, never()).sendMarkdown(anyLong(), any(), any());
+        verify(nudgeLogRepository, never()).save(any());
+    }
+
+    @Test
     void runEscalations_doesNothing_whenNoOverdueTasks() {
         // Arrange
         final Instant now = DUE.plus(Duration.ofHours(2));
@@ -259,6 +344,92 @@ class EscalationServiceTest {
         final ArgumentCaptor<NudgeLog> logCaptor = ArgumentCaptor.forClass(NudgeLog.class);
         verify(nudgeLogRepository).save(logCaptor.capture());
         assertThat(logCaptor.getValue().getId()).isEqualTo(idCaptor.getValue());
+    }
+
+    @Test
+    void runEscalations_capsAtDailyLimit_whenFiveTasksTargetOneNudger() {
+        // Arrange — one active nudger due on five overdue tasks at once, default limit 3, nothing sent today
+        final User owner = user(810_110L);
+        final User nudgerUser = user(810_111L);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final List<Task> tasks = List.of(task(owner), task(owner), task(owner), task(owner), task(owner));
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubMultiTaskLoad(tasks, List.of(owner, nudgerUser), List.of(pair), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(0L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — only three of the five reach the nudger; the rest are throttled
+        verify(gateway, org.mockito.Mockito.times(3)).sendMarkdown(eq(810_111L), eq("body"), isNull());
+        verify(nudgeLogRepository, org.mockito.Mockito.times(3)).save(any());
+    }
+
+    @Test
+    void runEscalations_skipsCappedNudger_butDeliversToAnother() {
+        // Arrange — one task, two active nudgers; A is already at the cap, B is fresh
+        final User owner = user(810_120L);
+        final User cappedUser = user(810_121L);
+        final User freshUser = user(810_122L);
+        final Task task = task(owner);
+        final Nudger cappedPair = activeNudger(owner, cappedUser);
+        final Nudger freshPair = activeNudger(owner, freshUser);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, cappedUser, freshUser), List.of(cappedPair, freshPair),
+                ladder(task), List.of(), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(eq(cappedPair.getId()), any()))
+                .thenReturn(3L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — the capped nudger is skipped, the message moves to the other active nudger
+        verify(gateway).sendMarkdown(eq(810_122L), eq("body"), isNull());
+        verify(gateway, never()).sendMarkdown(eq(810_121L), any(), any());
+    }
+
+    @Test
+    void runEscalations_sendsNothing_whenAllNudgersAreCapped() {
+        // Arrange — every active nudger has already hit the cap today
+        final User owner = user(810_130L);
+        final User nudgerA = user(810_131L);
+        final User nudgerB = user(810_132L);
+        final Task task = task(owner);
+        final Nudger pairA = activeNudger(owner, nudgerA);
+        final Nudger pairB = activeNudger(owner, nudgerB);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, nudgerA, nudgerB), List.of(pairA, pairB), ladder(task), List.of(), now);
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(3L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert
+        verify(gateway, never()).sendMarkdown(anyLong(), any(), any());
+        verify(nudgeLogRepository, never()).save(any());
+    }
+
+    @Test
+    void runEscalations_respectsCustomPerUserLimit() {
+        // Arrange — owner lowered the cap to 1; one nudger due on three tasks
+        final User owner = user(810_140L);
+        owner.setNudgerDailyLimit(1);
+        final User nudgerUser = user(810_141L);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final List<Task> tasks = List.of(task(owner), task(owner), task(owner));
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubMultiTaskLoad(tasks, List.of(owner, nudgerUser), List.of(pair), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(0L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — only one reminder gets through
+        verify(gateway, org.mockito.Mockito.times(1)).sendMarkdown(eq(810_141L), eq("body"), isNull());
+        verify(nudgeLogRepository, org.mockito.Mockito.times(1)).save(any());
     }
 
     @Test

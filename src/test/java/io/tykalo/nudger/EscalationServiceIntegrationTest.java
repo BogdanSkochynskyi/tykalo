@@ -22,8 +22,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 /**
  * Drives the full TK-156 escalation sweep against the real Flyway-migrated schema: an overdue PROJECT
  * task whose seeded ladder has crossed a rung must produce one {@code nudge_log} row per active nudger,
- * deduped across repeated sweeps, never delivered to a PAUSED nudger, and capped by the
- * {@code uq_nudge_log_target_nudger_level} constraint (V11). The {@link io.tykalo.telegram.TelegramMessageGateway}
+ * deduped across repeated sweeps, never delivered to a PAUSED nudger, capped by the
+ * {@code uq_nudge_log_target_nudger_level} constraint (V11), and throttled to the owner's
+ * {@code nudger_daily_limit} reminders per nudger per day (TK-159). The {@link io.tykalo.telegram.TelegramMessageGateway}
  * is the non-polling no-op here, so sends are suppressed while the ledger is still written.
  *
  * <p>Owns the {@code 810_00x} tg_chat_id range — the singleton Postgres is shared across integration
@@ -124,6 +125,25 @@ class EscalationServiceIntegrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(nudgeLogRepository.findByTargetTypeAndTargetId(EscalationTargetType.TASK, task.getId()))
                 .isEmpty();
+    }
+
+    @Test
+    void runEscalations_capsRemindersPerNudgerPerDay_acrossSimultaneousTasks() {
+        // Arrange — one active nudger due on five overdue tasks in a single sweep; default cap is 3
+        final User owner = savedUser(810_009L, "owner");
+        final User nudgerUser = savedUser(810_010L, "buddy");
+        final Nudger pair = savedNudger(owner, nudgerUser, NudgerStatus.ACTIVE);
+        for (int i = 0; i < 5; i++) {
+            overdueProjectTask(owner);
+        }
+        final Instant now = DUE.plus(3, ChronoUnit.HOURS);
+
+        // Act
+        escalationService.runEscalations(now);
+
+        // Assert — exactly three reminders were logged for the nudger, the other two were throttled
+        assertThat(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(pair.getId(), Instant.EPOCH))
+                .isEqualTo(owner.getNudgerDailyLimit());
     }
 
     @Test
