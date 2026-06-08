@@ -2,8 +2,13 @@ package io.tykalo.nudger;
 
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -101,6 +106,97 @@ public class NudgerService {
         log.info("Nudger {} {} the invite from owner {}",
                 saved.getId(), accept ? "accepted" : "declined", owner.getId());
         return accept ? new ConsentResult.Accepted(saved, owner) : new ConsentResult.Declined(saved, owner);
+    }
+
+    /**
+     * The owner's {@code ACTIVE} nudgers as display rows (TK-154 {@code /nudgers list}), resolving each
+     * pairing's {@code nudgerUserId} to a username and pairing it with the karma score, ordered by
+     * karma (highest first), then username.
+     */
+    @Transactional(readOnly = true)
+    public List<NudgerSummary> listActive(final User owner) {
+        final List<Nudger> active =
+                nudgerRepository.findByOwnerIdAndStatus(owner.getId(), NudgerStatus.ACTIVE);
+        final Map<UUID, String> usernames = userRepository
+                .findAllById(active.stream().map(Nudger::getNudgerUserId).toList())
+                .stream()
+                .collect(Collectors.toMap(User::getId, User::getTgUsername));
+        return active.stream()
+                .map(n -> new NudgerSummary(usernames.getOrDefault(n.getNudgerUserId(), "?"), n.getKarmaScore()))
+                .sorted(Comparator.comparingInt(NudgerSummary::karmaScore).reversed()
+                        .thenComparing(NudgerSummary::username))
+                .toList();
+    }
+
+    /**
+     * Read-only resolution of {@code rawUsername} to one of the owner's pairings (TK-154), without
+     * mutating it — used by {@code /nudgers remove} to preview the target before its confirmation step.
+     * {@link NudgerActionResult.Ok} here means "found", carrying the pairing; the not-found cases match
+     * the mutating operations.
+     */
+    @Transactional(readOnly = true)
+    public NudgerActionResult find(final User owner, final String rawUsername) {
+        return applyToNudger(owner, rawUsername, NudgerActionResult.Ok::new);
+    }
+
+    /** Temporarily deactivates an {@code ACTIVE} pairing (TK-154 {@code /nudgers pause}); only ACTIVE qualifies. */
+    @Transactional
+    public NudgerActionResult pause(final User owner, final String rawUsername) {
+        return applyToNudger(owner, rawUsername, (nudger, invitee) -> {
+            if (nudger.getStatus() != NudgerStatus.ACTIVE) {
+                return new NudgerActionResult.Unchanged(nudger, invitee);
+            }
+            nudger.setStatus(NudgerStatus.PAUSED);
+            log.info("Owner {} paused nudger {}", owner.getId(), nudger.getId());
+            return new NudgerActionResult.Ok(nudgerRepository.save(nudger), invitee);
+        });
+    }
+
+    /** Reactivates a {@code PAUSED} pairing (TK-154 {@code /nudgers resume}); only PAUSED qualifies. */
+    @Transactional
+    public NudgerActionResult resume(final User owner, final String rawUsername) {
+        return applyToNudger(owner, rawUsername, (nudger, invitee) -> {
+            if (nudger.getStatus() != NudgerStatus.PAUSED) {
+                return new NudgerActionResult.Unchanged(nudger, invitee);
+            }
+            nudger.setStatus(NudgerStatus.ACTIVE);
+            log.info("Owner {} resumed nudger {}", owner.getId(), nudger.getId());
+            return new NudgerActionResult.Ok(nudgerRepository.save(nudger), invitee);
+        });
+    }
+
+    /**
+     * Permanently removes a pairing in any status (TK-154 {@code /nudgers remove}). The hard delete
+     * cascades onto its {@code nudge_log} rows via the FK (Flyway {@code V10}), so the audit ledger
+     * does not block the removal.
+     */
+    @Transactional
+    public NudgerActionResult remove(final User owner, final String rawUsername) {
+        return applyToNudger(owner, rawUsername, (nudger, invitee) -> {
+            nudgerRepository.delete(nudger);
+            log.info("Owner {} removed nudger {}", owner.getId(), nudger.getId());
+            return new NudgerActionResult.Ok(nudger, invitee);
+        });
+    }
+
+    /**
+     * Resolves {@code rawUsername} to one of {@code owner}'s pairings and applies {@code action},
+     * funneling the two "no such target" cases — unknown username and known-but-not-a-nudger — through
+     * one place so every management subcommand reports them identically.
+     */
+    private NudgerActionResult applyToNudger(final User owner, final String rawUsername,
+            final BiFunction<Nudger, User, NudgerActionResult> action) {
+        final String username = normalizeUsername(rawUsername);
+        final Optional<User> invitee = userRepository.findByTgUsernameIgnoreCase(username);
+        if (invitee.isEmpty()) {
+            return new NudgerActionResult.NotRegistered(username);
+        }
+        final Optional<Nudger> pairing =
+                nudgerRepository.findByOwnerIdAndNudgerUserId(owner.getId(), invitee.get().getId());
+        if (pairing.isEmpty()) {
+            return new NudgerActionResult.NotANudger(username);
+        }
+        return action.apply(pairing.get(), invitee.get());
     }
 
     private String normalizeUsername(final String raw) {

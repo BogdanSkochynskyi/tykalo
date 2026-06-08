@@ -6,7 +6,9 @@ import static org.assertj.core.api.InstanceOfAssertFactories.type;
 import io.tykalo.AbstractIntegrationTest;
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
+import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Objects;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,9 @@ class NudgerServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private NudgerRepository nudgerRepository;
+
+    @Autowired
+    private NudgeLogRepository nudgeLogRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -200,5 +205,106 @@ class NudgerServiceIntegrationTest extends AbstractIntegrationTest {
     void consent_returnsNotFound_forUnknownNudger() {
         assertThat(nudgerService.consent(UUID.randomUUID(), true))
                 .isInstanceOf(ConsentResult.NotFound.class);
+    }
+
+    @Test
+    void listActive_returnsActiveNudgers_orderedByKarmaDescending() {
+        // Arrange — one ACTIVE pairing with high karma, one with low, plus a PENDING that must be excluded
+        final User owner = savedUser(990_021L, "owner12");
+        savedUser(990_022L, "lowkarma");
+        savedUser(990_023L, "highkarma");
+        savedUser(990_024L, "pendingone");
+        activate(owner, "lowkarma", 1);
+        activate(owner, "highkarma", 9);
+        nudgerService.invite(owner, "pendingone");
+
+        // Act
+        final var summaries = nudgerService.listActive(owner);
+
+        // Assert
+        assertThat(summaries).extracting(NudgerSummary::username).containsExactly("highkarma", "lowkarma");
+        assertThat(summaries).extracting(NudgerSummary::karmaScore).containsExactly(9, 1);
+    }
+
+    @Test
+    void pause_movesActiveToPaused_andResumeMovesItBack() {
+        // Arrange
+        final User owner = savedUser(990_025L, "owner13");
+        savedUser(990_026L, "helper13");
+        activate(owner, "helper13", 0);
+
+        // Act + Assert — pause
+        assertThat(nudgerService.pause(owner, "@helper13")).asInstanceOf(type(NudgerActionResult.Ok.class))
+                .satisfies(ok -> assertThat(ok.nudger().getStatus()).isEqualTo(NudgerStatus.PAUSED));
+
+        // Act + Assert — resume
+        assertThat(nudgerService.resume(owner, "helper13")).asInstanceOf(type(NudgerActionResult.Ok.class))
+                .satisfies(ok -> assertThat(ok.nudger().getStatus()).isEqualTo(NudgerStatus.ACTIVE));
+    }
+
+    @Test
+    void pause_isUnchanged_whenNotActive() {
+        final User owner = savedUser(990_027L, "owner14");
+        savedUser(990_028L, "helper14");
+        nudgerService.invite(owner, "helper14"); // stays PENDING
+
+        assertThat(nudgerService.pause(owner, "helper14")).asInstanceOf(type(NudgerActionResult.Unchanged.class))
+                .satisfies(u -> assertThat(u.nudger().getStatus()).isEqualTo(NudgerStatus.PENDING));
+    }
+
+    @Test
+    void resume_isUnchanged_whenAlreadyActive() {
+        final User owner = savedUser(990_029L, "owner15");
+        savedUser(990_030L, "helper15");
+        activate(owner, "helper15", 0);
+
+        assertThat(nudgerService.resume(owner, "helper15")).isInstanceOf(NudgerActionResult.Unchanged.class);
+    }
+
+    @Test
+    void remove_deletesPairing_andCascadesNudgeLog() {
+        // Arrange — an active pairing with a logged escalation referencing it
+        final User owner = savedUser(990_031L, "owner16");
+        savedUser(990_032L, "helper16");
+        final Nudger nudger = activate(owner, "helper16", 0);
+        final UUID nudgerId = Objects.requireNonNull(nudger.getId());
+        final UUID targetId = UUID.randomUUID();
+        nudgeLogRepository.save(NudgeLog.of(
+                EscalationTargetType.TASK, targetId, nudgerId, 1, Instant.now(), "ping"));
+        assertThat(nudgeLogRepository.findByTargetTypeAndTargetId(EscalationTargetType.TASK, targetId)).isNotEmpty();
+
+        // Act
+        final NudgerActionResult result = nudgerService.remove(owner, "@helper16");
+
+        // Assert — pairing gone, and the FK cascade took its log rows with it
+        assertThat(result).isInstanceOf(NudgerActionResult.Ok.class);
+        assertThat(nudgerRepository.findById(nudgerId)).isEmpty();
+        assertThat(nudgeLogRepository.findByTargetTypeAndTargetId(EscalationTargetType.TASK, targetId)).isEmpty();
+    }
+
+    @Test
+    void manage_returnsNotRegistered_forUnknownUsername() {
+        final User owner = savedUser(990_033L, "owner17");
+
+        assertThat(nudgerService.pause(owner, "@ghost17")).asInstanceOf(type(NudgerActionResult.NotRegistered.class))
+                .satisfies(nr -> assertThat(nr.username()).isEqualTo("ghost17"));
+    }
+
+    @Test
+    void manage_returnsNotANudger_whenUserExistsButIsNotAPairing() {
+        final User owner = savedUser(990_034L, "owner18");
+        savedUser(990_035L, "stranger18");
+
+        assertThat(nudgerService.remove(owner, "stranger18")).asInstanceOf(type(NudgerActionResult.NotANudger.class))
+                .satisfies(n -> assertThat(n.username()).isEqualTo("stranger18"));
+    }
+
+    /** Invites {@code username}, consents on their behalf, and stamps {@code karma}, yielding an ACTIVE pairing. */
+    private Nudger activate(final User owner, final String username, final int karma) {
+        final UUID nudgerId = ((InviteResult.Invited) nudgerService.invite(owner, username)).nudger().getId();
+        nudgerService.consent(Objects.requireNonNull(nudgerId), true);
+        final Nudger nudger = nudgerRepository.findById(nudgerId).orElseThrow();
+        nudger.setKarmaScore(karma);
+        return nudgerRepository.save(nudger);
     }
 }

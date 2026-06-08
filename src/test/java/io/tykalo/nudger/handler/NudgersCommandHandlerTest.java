@@ -9,13 +9,17 @@ import static org.mockito.Mockito.when;
 
 import io.tykalo.nudger.InviteResult;
 import io.tykalo.nudger.Nudger;
+import io.tykalo.nudger.NudgerActionResult;
 import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
+import io.tykalo.nudger.NudgerStatus;
+import io.tykalo.nudger.NudgerSummary;
 import io.tykalo.telegram.TelegramBotProperties;
 import io.tykalo.telegram.TelegramUpdateFixtures;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -103,14 +107,131 @@ class NudgersCommandHandlerTest {
     void add_withoutUsername_returnsUsage() {
         final Update update = TelegramUpdateFixtures.command("/nudgers add", 1L, "owner", "en");
 
-        assertThat(handler.nudgers(update)).isEqualTo("Usage: /nudgers add @username");
+        assertThat(handler.nudgers(update)).startsWith("Usage:").contains("/nudgers add @username");
     }
 
     @Test
     void unknownSubcommand_returnsUsage() {
         final Update update = TelegramUpdateFixtures.command("/nudgers wat", 1L, "owner", "en");
 
-        assertThat(handler.nudgers(update)).isEqualTo("Usage: /nudgers add @username");
+        assertThat(handler.nudgers(update)).startsWith("Usage:").contains("/nudgers add @username");
+    }
+
+    @Test
+    void list_rendersActiveNudgersWithKarma() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers list", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.listActive(owner))
+                .thenReturn(List.of(new NudgerSummary("alice", 5), new NudgerSummary("bob", 2)));
+
+        assertThat(handler.nudgers(update))
+                .contains("@alice — karma 5")
+                .contains("@bob — karma 2");
+    }
+
+    @Test
+    void list_whenNoNudgers_invitesToAddOne() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers list", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.listActive(owner)).thenReturn(List.of());
+
+        assertThat(handler.nudgers(update)).contains("no active Nudgers");
+    }
+
+    @Test
+    void bareNudgers_defaultsToList() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.listActive(owner)).thenReturn(List.of());
+
+        assertThat(handler.nudgers(update)).contains("no active Nudgers");
+    }
+
+    @Test
+    void remove_withoutConfirm_asksForConfirmation_withoutDeleting() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers remove @helper", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        final User invitee = user(2L, "helper");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.find(owner, "@helper"))
+                .thenReturn(new NudgerActionResult.Ok(Nudger.invite(owner, invitee), invitee));
+
+        assertThat(handler.nudgers(update))
+                .contains("Remove @helper")
+                .contains("/nudgers remove @helper confirm");
+        verify(nudgerService, never()).remove(any(), any());
+    }
+
+    @Test
+    void remove_withConfirm_deletesPairing() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers remove @helper confirm", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        final User invitee = user(2L, "helper");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.remove(owner, "@helper"))
+                .thenReturn(new NudgerActionResult.Ok(Nudger.invite(owner, invitee), invitee));
+
+        assertThat(handler.nudgers(update)).contains("Removed @helper");
+        verify(nudgerService).remove(owner, "@helper");
+    }
+
+    @Test
+    void remove_reportsNotANudger() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers remove @stranger", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.find(owner, "@stranger"))
+                .thenReturn(new NudgerActionResult.NotANudger("stranger"));
+
+        assertThat(handler.nudgers(update)).contains("isn't one of your Nudgers");
+    }
+
+    @Test
+    void pause_deactivatesActiveNudger() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers pause @helper", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        final User invitee = user(2L, "helper");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.pause(owner, "@helper"))
+                .thenReturn(new NudgerActionResult.Ok(Nudger.invite(owner, invitee), invitee));
+
+        assertThat(handler.nudgers(update)).contains("Paused @helper");
+    }
+
+    @Test
+    void pause_whenAlreadyPaused_saysSo() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers pause @helper", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        final User invitee = user(2L, "helper");
+        final Nudger paused = Nudger.invite(owner, invitee);
+        paused.setStatus(NudgerStatus.PAUSED);
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.pause(owner, "@helper"))
+                .thenReturn(new NudgerActionResult.Unchanged(paused, invitee));
+
+        assertThat(handler.nudgers(update)).contains("already paused");
+    }
+
+    @Test
+    void resume_reactivatesPausedNudger() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers resume @helper", 1L, "owner", "en");
+        final User owner = user(1L, "owner");
+        final User invitee = user(2L, "helper");
+        when(userService.findOrCreate(update)).thenReturn(owner);
+        when(nudgerService.resume(owner, "@helper"))
+                .thenReturn(new NudgerActionResult.Ok(Nudger.invite(owner, invitee), invitee));
+
+        assertThat(handler.nudgers(update)).contains("Resumed @helper");
+    }
+
+    @Test
+    void remove_withoutUsername_returnsUsage() {
+        final Update update = TelegramUpdateFixtures.command("/nudgers remove", 1L, "owner", "en");
+
+        assertThat(handler.nudgers(update)).isEqualTo("Usage: /nudgers remove @username");
     }
 
     private User user(final long tgChatId, final String username) {
