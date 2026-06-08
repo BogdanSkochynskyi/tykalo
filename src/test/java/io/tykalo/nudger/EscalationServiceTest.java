@@ -109,6 +109,19 @@ class EscalationServiceTest {
                 .thenReturn(alreadySent);
     }
 
+    private void stubMultiTaskLoad(final List<Task> tasks, final List<User> users, final List<Nudger> nudgers,
+                                   final Instant now) {
+        final List<EscalationPolicy> ladders = tasks.stream().flatMap(task -> ladder(task).stream()).toList();
+        when(taskRepository.findOverdueProjectTasks(now)).thenReturn(tasks);
+        when(userRepository.findAllById(any())).thenReturn(users);
+        when(nudgerRepository.findByOwnerIdInAndStatus(any(), eq(NudgerStatus.ACTIVE))).thenReturn(nudgers);
+        when(escalationPolicyRepository.findByTargetTypeAndTargetIdInOrderByLevelAsc(eq(EscalationTargetType.TASK), any()))
+                .thenReturn(ladders);
+        when(taskNudgerService.assignmentsByTask(any())).thenReturn(Map.of());
+        when(nudgeLogRepository.findByTargetTypeAndTargetIdIn(eq(EscalationTargetType.TASK), any()))
+                .thenReturn(List.of());
+    }
+
     @Test
     void runEscalations_sendsLevelOneToAllActiveNudgers_whenTwoHoursOverdueAndNothingSent() {
         // Arrange — 2h past due, both nudgers active, nothing sent yet
@@ -331,6 +344,92 @@ class EscalationServiceTest {
         final ArgumentCaptor<NudgeLog> logCaptor = ArgumentCaptor.forClass(NudgeLog.class);
         verify(nudgeLogRepository).save(logCaptor.capture());
         assertThat(logCaptor.getValue().getId()).isEqualTo(idCaptor.getValue());
+    }
+
+    @Test
+    void runEscalations_capsAtDailyLimit_whenFiveTasksTargetOneNudger() {
+        // Arrange — one active nudger due on five overdue tasks at once, default limit 3, nothing sent today
+        final User owner = user(810_110L);
+        final User nudgerUser = user(810_111L);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final List<Task> tasks = List.of(task(owner), task(owner), task(owner), task(owner), task(owner));
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubMultiTaskLoad(tasks, List.of(owner, nudgerUser), List.of(pair), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(0L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — only three of the five reach the nudger; the rest are throttled
+        verify(gateway, org.mockito.Mockito.times(3)).sendMarkdown(eq(810_111L), eq("body"), isNull());
+        verify(nudgeLogRepository, org.mockito.Mockito.times(3)).save(any());
+    }
+
+    @Test
+    void runEscalations_skipsCappedNudger_butDeliversToAnother() {
+        // Arrange — one task, two active nudgers; A is already at the cap, B is fresh
+        final User owner = user(810_120L);
+        final User cappedUser = user(810_121L);
+        final User freshUser = user(810_122L);
+        final Task task = task(owner);
+        final Nudger cappedPair = activeNudger(owner, cappedUser);
+        final Nudger freshPair = activeNudger(owner, freshUser);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, cappedUser, freshUser), List.of(cappedPair, freshPair),
+                ladder(task), List.of(), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(eq(cappedPair.getId()), any()))
+                .thenReturn(3L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — the capped nudger is skipped, the message moves to the other active nudger
+        verify(gateway).sendMarkdown(eq(810_122L), eq("body"), isNull());
+        verify(gateway, never()).sendMarkdown(eq(810_121L), any(), any());
+    }
+
+    @Test
+    void runEscalations_sendsNothing_whenAllNudgersAreCapped() {
+        // Arrange — every active nudger has already hit the cap today
+        final User owner = user(810_130L);
+        final User nudgerA = user(810_131L);
+        final User nudgerB = user(810_132L);
+        final Task task = task(owner);
+        final Nudger pairA = activeNudger(owner, nudgerA);
+        final Nudger pairB = activeNudger(owner, nudgerB);
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubLoad(task, List.of(owner, nudgerA, nudgerB), List.of(pairA, pairB), ladder(task), List.of(), now);
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(3L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert
+        verify(gateway, never()).sendMarkdown(anyLong(), any(), any());
+        verify(nudgeLogRepository, never()).save(any());
+    }
+
+    @Test
+    void runEscalations_respectsCustomPerUserLimit() {
+        // Arrange — owner lowered the cap to 1; one nudger due on three tasks
+        final User owner = user(810_140L);
+        owner.setNudgerDailyLimit(1);
+        final User nudgerUser = user(810_141L);
+        final Nudger pair = activeNudger(owner, nudgerUser);
+        final List<Task> tasks = List.of(task(owner), task(owner), task(owner));
+        final Instant now = DUE.plus(Duration.ofHours(2));
+        stubMultiTaskLoad(tasks, List.of(owner, nudgerUser), List.of(pair), now);
+        when(renderer.render(any(), any(), any(), any())).thenReturn("body");
+        when(nudgeLogRepository.countByNudgerIdAndSentAtGreaterThanEqual(any(), any())).thenReturn(0L);
+
+        // Act
+        service.runEscalations(now);
+
+        // Assert — only one reminder gets through
+        verify(gateway, org.mockito.Mockito.times(1)).sendMarkdown(eq(810_141L), eq("body"), isNull());
+        verify(nudgeLogRepository, org.mockito.Mockito.times(1)).save(any());
     }
 
     @Test

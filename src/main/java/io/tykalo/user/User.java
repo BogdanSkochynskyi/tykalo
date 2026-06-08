@@ -34,6 +34,7 @@ public class User {
     static final LocalTime DEFAULT_QUIET_HOURS_START = LocalTime.of(22, 0);
     static final LocalTime DEFAULT_QUIET_HOURS_END = LocalTime.of(7, 0);
     static final int DEFAULT_DIGEST_HOUR = 8;
+    static final int DEFAULT_NUDGER_DAILY_LIMIT = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -61,6 +62,9 @@ public class User {
     @Column(name = "digest_hour")
     private @Nullable Integer digestHour;
 
+    @Column(name = "nudger_daily_limit", nullable = false)
+    private int nudgerDailyLimit = DEFAULT_NUDGER_DAILY_LIMIT;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private @Nullable Instant createdAt;
@@ -79,6 +83,7 @@ public class User {
         user.quietHoursStart = DEFAULT_QUIET_HOURS_START;
         user.quietHoursEnd = DEFAULT_QUIET_HOURS_END;
         user.digestHour = DEFAULT_DIGEST_HOUR;
+        user.nudgerDailyLimit = DEFAULT_NUDGER_DAILY_LIMIT;
         return user;
     }
 }
