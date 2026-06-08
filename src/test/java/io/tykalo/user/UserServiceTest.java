@@ -127,6 +127,34 @@ class UserServiceTest {
     }
 
     @Test
+    void updateDigestHour_setsAndPersists_newHour() {
+        // Arrange
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.updateDigestHour(user, 9);
+
+        // Assert
+        verify(userRepository).save(user);
+        assertThat(result.getDigestHour()).isEqualTo(9);
+    }
+
+    @Test
+    void disableDigest_clearsDigestHour() {
+        // Arrange
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final User result = userService.disableDigest(user);
+
+        // Assert
+        verify(userRepository).save(user);
+        assertThat(result.getDigestHour()).isNull();
+    }
+
+    @Test
     void disableQuietHours_clearsBothBounds() {
         // Arrange
         final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");

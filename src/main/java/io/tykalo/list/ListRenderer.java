@@ -79,7 +79,8 @@ public class ListRenderer {
                 .build();
     }
 
-    static String escape(final String text) {
+    /** Escapes a string for Telegram MarkdownV2 (backslash-prefixes every reserved character). */
+    public static String escape(final String text) {
         final StringBuilder escaped = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             final char c = text.charAt(i);

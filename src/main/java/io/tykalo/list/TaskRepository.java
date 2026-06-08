@@ -56,4 +56,26 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     List<Task> findDueBetween(@Param("ownerId") UUID ownerId,
                               @Param("startInclusive") Instant startInclusive,
                               @Param("endExclusive") Instant endExclusive);
+
+    /**
+     * An owner's still-actionable {@code PROJECT}-list tasks due within the half-open window
+     * {@code [startInclusive, endExclusive)} — the morning digest's content. Joins to a live
+     * {@link TaskList} of type {@code PROJECT}; results are ordered by due time then title so the
+     * digest body and its inline buttons share one numbering.
+     */
+    @Query("""
+            SELECT t FROM Task t, TaskList l
+            WHERE t.listId = l.id
+              AND l.type = io.tykalo.list.ListType.PROJECT
+              AND l.archivedAt IS NULL
+              AND t.ownerId = :ownerId
+              AND t.status = io.tykalo.list.TaskStatus.TODO
+              AND t.archivedAt IS NULL
+              AND t.dueAt >= :startInclusive
+              AND t.dueAt < :endExclusive
+            ORDER BY t.dueAt ASC, t.title ASC
+            """)
+    List<Task> findProjectTasksDueBetween(@Param("ownerId") UUID ownerId,
+                                          @Param("startInclusive") Instant startInclusive,
+                                          @Param("endExclusive") Instant endExclusive);
 }

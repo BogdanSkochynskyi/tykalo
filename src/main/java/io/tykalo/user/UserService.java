@@ -58,6 +58,28 @@ public class UserService {
         return saved;
     }
 
+    /**
+     * Persists the hour (local wall-clock, 0–23) at which the user gets their morning digest. Callers
+     * validate the range at the boundary; this method just stores it (the user is merged, as it
+     * arrives detached).
+     */
+    @Transactional
+    public User updateDigestHour(final User user, final int hour) {
+        user.setDigestHour(hour);
+        final User saved = userRepository.save(user);
+        log.info("Updated digest hour of user id={} to {}", saved.getId(), hour);
+        return saved;
+    }
+
+    /** Turns the morning digest off for the user (clears the digest hour). */
+    @Transactional
+    public User disableDigest(final User user) {
+        user.setDigestHour(null);
+        final User saved = userRepository.save(user);
+        log.info("Disabled morning digest of user id={}", saved.getId());
+        return saved;
+    }
+
     /** Clears the user's quiet-hours window, so no period is suppressed. */
     @Transactional
     public User disableQuietHours(final User user) {
