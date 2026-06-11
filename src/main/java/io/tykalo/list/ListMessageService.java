@@ -56,7 +56,7 @@ public class ListMessageService {
 
     private void sendNew(final UUID listId, final long chatId, final String text,
                          final InlineKeyboardMarkup keyboard) {
-        final Optional<Integer> messageId = gateway.sendMarkdown(chatId, text, keyboard);
+        final Optional<Integer> messageId = gateway.sendMarkdownDirect(chatId, text, keyboard);
         if (messageId.isEmpty()) {
             log.debug("No message id returned for list {} in chat {} — nothing persisted", listId, chatId);
             return;

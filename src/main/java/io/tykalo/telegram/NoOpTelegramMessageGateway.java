@@ -13,8 +13,14 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 public class NoOpTelegramMessageGateway implements TelegramMessageGateway {
 
     @Override
-    public Optional<Integer> sendMarkdown(final long chatId, final String markdownV2,
-                                          final @Nullable InlineKeyboardMarkup keyboard) {
+    public void sendMarkdown(final long chatId, final String markdownV2,
+                             final @Nullable InlineKeyboardMarkup keyboard) {
+        log.debug("Polling disabled — suppressing queued message send to chat {}", chatId);
+    }
+
+    @Override
+    public Optional<Integer> sendMarkdownDirect(final long chatId, final String markdownV2,
+                                                final @Nullable InlineKeyboardMarkup keyboard) {
         log.debug("Polling disabled — suppressing list message send to chat {}", chatId);
         return Optional.empty();
     }

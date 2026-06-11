@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -190,7 +191,7 @@ class ReminderServiceTest {
         when(reminderLogRepository.findByTaskIdIn(any())).thenReturn(List.of());
         lenient().when(quietHoursService.isQuiet(any(), eq(now))).thenReturn(false);
         stubRenderAndKeyboard();
-        when(gateway.sendMarkdown(eq(950_005L), any(), any())).thenThrow(new RuntimeException("Telegram down"));
+        doThrow(new RuntimeException("Telegram down")).when(gateway).sendMarkdown(eq(950_005L), any(), any());
 
         // Act + Assert — the sweep swallows the failure and still delivers to the second owner
         assertThatCode(() -> service.sendDueReminders(now)).doesNotThrowAnyException();

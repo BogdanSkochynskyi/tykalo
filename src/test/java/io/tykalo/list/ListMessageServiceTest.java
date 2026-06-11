@@ -64,14 +64,14 @@ class ListMessageServiceTest {
     void publish_sendsNewMessage_andStoresMessageId_whenNoneExists() {
         // Arrange
         when(listMessageRepository.findByListIdAndTgChatId(list.getId(), CHAT_ID)).thenReturn(Optional.empty());
-        when(gateway.sendMarkdown(eq(CHAT_ID), anyString(), any())).thenReturn(Optional.of(555));
+        when(gateway.sendMarkdownDirect(eq(CHAT_ID), anyString(), any())).thenReturn(Optional.of(555));
 
         // Act
         service.publish(list, CHAT_ID);
 
         // Assert — the composed text carries the list-name header and rendered body
         final ArgumentCaptor<String> text = ArgumentCaptor.captor();
-        verify(gateway).sendMarkdown(eq(CHAT_ID), text.capture(), any());
+        verify(gateway).sendMarkdownDirect(eq(CHAT_ID), text.capture(), any());
         assertThat(text.getValue()).isEqualTo("*Groceries*\n\n1\\. Buy milk");
         verify(gateway, never()).editMarkdown(anyLong(), anyInt(), anyString(), any());
 
@@ -94,7 +94,7 @@ class ListMessageServiceTest {
 
         // Assert
         verify(gateway).editMarkdown(eq(CHAT_ID), eq(777), eq("*Groceries*\n\n1\\. Buy milk"), any());
-        verify(gateway, never()).sendMarkdown(anyLong(), anyString(), any());
+        verify(gateway, never()).sendMarkdownDirect(anyLong(), anyString(), any());
         verify(listMessageRepository).save(existing);
         assertThat(existing.getLastRenderedAt()).isNotNull();
     }
@@ -103,7 +103,7 @@ class ListMessageServiceTest {
     void publish_persistsNothing_whenSendYieldsNoMessageId() {
         // Arrange — e.g. the no-op gateway when polling is disabled
         when(listMessageRepository.findByListIdAndTgChatId(list.getId(), CHAT_ID)).thenReturn(Optional.empty());
-        when(gateway.sendMarkdown(eq(CHAT_ID), anyString(), any())).thenReturn(Optional.empty());
+        when(gateway.sendMarkdownDirect(eq(CHAT_ID), anyString(), any())).thenReturn(Optional.empty());
 
         // Act
         service.publish(list, CHAT_ID);
