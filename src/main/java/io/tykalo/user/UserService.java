@@ -19,18 +19,32 @@ public class UserService {
     private final TimezoneResolver timezoneResolver;
     private final ApplicationEventPublisher events;
 
+    /** The outcome of {@link #register(Update)}: the user, plus whether this contact created them. */
+    public record Registration(User user, boolean created) {}
+
+    /**
+     * Returns the user behind the given update, creating one on first contact, and reports whether
+     * the user was newly created. The {@code created} flag lets {@code /start} run onboarding only
+     * on a genuine first contact (TK-172). The Telegram chat id is the stable identity key.
+     */
+    @Transactional
+    public Registration register(final Update update) {
+        final Message message = update.getMessage();
+        if (message == null || message.getFrom() == null) {
+            throw new IllegalArgumentException("Update has no message sender to identify a user");
+        }
+        return userRepository.findByTgChatId(message.getChatId())
+                .map(existing -> new Registration(existing, false))
+                .orElseGet(() -> new Registration(create(message), true));
+    }
+
     /**
      * Returns the user behind the given update, creating one on first contact.
      * The Telegram chat id is the stable identity key.
      */
     @Transactional
     public User findOrCreate(final Update update) {
-        final Message message = update.getMessage();
-        if (message == null || message.getFrom() == null) {
-            throw new IllegalArgumentException("Update has no message sender to identify a user");
-        }
-        return userRepository.findByTgChatId(message.getChatId())
-                .orElseGet(() -> create(message));
+        return register(update).user();
     }
 
     /**

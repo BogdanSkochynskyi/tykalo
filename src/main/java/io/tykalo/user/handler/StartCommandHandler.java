@@ -4,12 +4,15 @@ import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
 import io.tykalo.nudger.NudgerPromptService;
 import io.tykalo.nudger.NudgerService;
+import io.tykalo.onboarding.OnboardingService;
 import io.tykalo.telegram.TelegramCommand;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
+import io.tykalo.user.UserService.Registration;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
@@ -19,6 +22,10 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  * nudge_invite_<payload>} carries a nudger invite deep-link (TK-152) — the new user is wired up as
  * the encoded owner's pending nudger, the greeting notes who invited them, and the Yes/No consent
  * prompt (TK-153) is sent as a follow-up message (its buttons can't ride the plain string reply).
+ *
+ * <p>A genuine first {@code /start} with no invite kicks off the 3-step onboarding (TK-172): the
+ * {@link OnboardingService} owns the messages from there, so this handler stays silent. Invited
+ * users skip onboarding — their greeting + consent prompt take over instead.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,11 +34,21 @@ public class StartCommandHandler {
     private final UserService userService;
     private final NudgerService nudgerService;
     private final NudgerPromptService promptService;
+    private final OnboardingService onboardingService;
 
     @TelegramCommand("/start")
-    public String start(final Update update) {
-        final User user = userService.findOrCreate(update);
-        return greeting(user) + inviteNote(update, user);
+    public @Nullable String start(final Update update) {
+        final Registration registration = userService.register(update);
+        final User user = registration.user();
+        final String inviteNote = inviteNote(update, user);
+        if (!inviteNote.isEmpty()) {
+            return greeting(user) + inviteNote;
+        }
+        if (registration.created()) {
+            onboardingService.begin(user);
+            return null;
+        }
+        return greeting(user);
     }
 
     private String inviteNote(final Update update, final User invitee) {
