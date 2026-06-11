@@ -92,6 +92,38 @@ class UserServiceTest {
     }
 
     @Test
+    void register_reportsCreatedFalse_forExistingUser() {
+        // Arrange
+        final Update update = TelegramUpdateFixtures.command("/start", 42L, "bob", "uk");
+        final User existing = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.findByTgChatId(42L)).thenReturn(Optional.of(existing));
+
+        // Act
+        final UserService.Registration registration = userService.register(update);
+
+        // Assert
+        assertThat(registration.user()).isSameAs(existing);
+        assertThat(registration.created()).isFalse();
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void register_reportsCreatedTrue_onFirstContact() {
+        // Arrange
+        final Update update = TelegramUpdateFixtures.command("/start", 42L, "bob", "uk");
+        when(userRepository.findByTgChatId(42L)).thenReturn(Optional.empty());
+        when(timezoneResolver.resolve("uk")).thenReturn(ZoneId.of("Europe/Kyiv"));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        final UserService.Registration registration = userService.register(update);
+
+        // Assert
+        assertThat(registration.created()).isTrue();
+        assertThat(registration.user().getTgChatId()).isEqualTo(42L);
+    }
+
+    @Test
     void findOrCreate_rejectsUpdate_withoutMessage() {
         assertThatThrownBy(() -> userService.findOrCreate(TelegramUpdateFixtures.withoutMessage()))
                 .isInstanceOf(IllegalArgumentException.class);
