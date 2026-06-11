@@ -144,8 +144,11 @@ class TaskPersistenceIntegrationTest extends AbstractIntegrationTest {
         overdueButArchived.setArchivedAt(now);
         taskRepository.save(overdueButArchived);
 
-        // Act
-        final List<Task> result = taskRepository.findOverdue(now);
+        // Act — findOverdue is unscoped and the singleton container is shared across integration
+        // classes, so narrow to this test's own list before asserting (mirrors findByListId above).
+        final List<Task> result = taskRepository.findOverdue(now).stream()
+                .filter(task -> task.getListId().equals(list.getId()))
+                .toList();
 
         // Assert
         assertThat(result).extracting(Task::getTitle).containsExactly("overdue");
