@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.ApiResponse;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -198,9 +199,11 @@ class OutboundQueueWorkerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private TelegramApiRequestException tooManyRequests() {
-        final TelegramApiRequestException ex = mock(TelegramApiRequestException.class);
-        when(ex.getErrorCode()).thenReturn(429);
-        when(ex.getParameters()).thenReturn(null);
-        return ex;
+        final ApiResponse<?> response = ApiResponse.builder()
+                .ok(false)
+                .errorCode(429)
+                .errorDescription("Too Many Requests")
+                .build();
+        return new TelegramApiRequestException("Too Many Requests", response);
     }
 }
