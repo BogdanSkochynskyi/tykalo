@@ -16,11 +16,22 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 public interface TelegramMessageGateway {
 
     /**
-     * Sends a new MarkdownV2 message with an optional inline keyboard.
+     * Queues a new MarkdownV2 message with an optional (callback-only) inline keyboard for paced
+     * delivery through the rate-limit queue (TK-173). Fire-and-forget: the message id is not
+     * available to the caller. Use this for every outgoing message except the one case that must
+     * capture the id to edit it later (see {@link #sendMarkdownDirect}).
+     */
+    void sendMarkdown(long chatId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
+
+    /**
+     * Sends a new MarkdownV2 message <em>synchronously</em>, bypassing the queue, and returns the new
+     * message id. This is the single exception to routing sends through the queue: the "live" list
+     * message must know its id immediately so later taps can edit it in place. Such a publish is one
+     * interactive send per (list, chat) and is never bursty, so it does not threaten the rate limit.
      *
      * @return the new message id, or empty if the send was suppressed or failed
      */
-    Optional<Integer> sendMarkdown(long chatId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
+    Optional<Integer> sendMarkdownDirect(long chatId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
 
     /** Edits an existing message's text and inline keyboard in place. */
     void editMarkdown(long chatId, int messageId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);

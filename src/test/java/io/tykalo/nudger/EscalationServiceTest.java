@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -444,7 +445,7 @@ class EscalationServiceTest {
         final Instant now = DUE.plus(Duration.ofHours(2));
         stubLoad(task, List.of(owner, failing, ok), List.of(pairFailing, pairOk), ladder(task), List.of(), now);
         when(renderer.render(any(), any(), any(), any())).thenReturn("body");
-        when(gateway.sendMarkdown(eq(810_061L), any(), any())).thenThrow(new RuntimeException("Telegram down"));
+        doThrow(new RuntimeException("Telegram down")).when(gateway).sendMarkdown(eq(810_061L), any(), any());
 
         // Act + Assert — the sweep swallows the failure and still delivers to the second nudger
         assertThatCode(() -> service.runEscalations(now)).doesNotThrowAnyException();

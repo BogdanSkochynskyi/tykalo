@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -172,7 +173,7 @@ class MorningDigestServiceTest {
         when(taskService.findProjectTasksDueToday(ok.getId(), PLUS_TWO)).thenReturn(okTasks);
         when(renderer.render(any(), eq(PLUS_TWO))).thenReturn("body");
         when(listRenderer.keyboard(any())).thenReturn(InlineKeyboardMarkup.builder().build());
-        when(gateway.sendMarkdown(eq(42L), any(), any())).thenThrow(new RuntimeException("Telegram down"));
+        doThrow(new RuntimeException("Telegram down")).when(gateway).sendMarkdown(eq(42L), any(), any());
 
         // Act + Assert — the sweep swallows the failure and still delivers to the second user
         assertThatCode(() -> service.sendDigests(SIX_UTC)).doesNotThrowAnyException();

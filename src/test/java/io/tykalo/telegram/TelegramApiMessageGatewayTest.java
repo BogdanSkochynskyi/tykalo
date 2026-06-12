@@ -3,8 +3,10 @@ package io.tykalo.telegram;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.telegram.ratelimit.MessageQueueService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +29,9 @@ class TelegramApiMessageGatewayTest {
     @Mock
     private TelegramClient telegramClient;
 
+    @Mock
+    private MessageQueueService messageQueue;
+
     private TelegramApiMessageGateway gateway;
 
     private final InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
@@ -36,18 +41,28 @@ class TelegramApiMessageGatewayTest {
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        gateway = new TelegramApiMessageGateway(telegramClient);
+        gateway = new TelegramApiMessageGateway(telegramClient, messageQueue);
     }
 
     @Test
-    void sendMarkdown_buildsMarkdownV2MessageWithKeyboard_andReturnsMessageId() throws TelegramApiException {
+    void sendMarkdown_enqueuesForPacedDelivery_withoutTouchingTheClient() {
+        // Act
+        gateway.sendMarkdown(42L, "*Groceries*\n\n1\\. Buy milk", keyboard);
+
+        // Assert — queued, never sent directly
+        verify(messageQueue).enqueue(42L, "*Groceries*\n\n1\\. Buy milk", "MarkdownV2", keyboard);
+        verifyNoInteractions(telegramClient);
+    }
+
+    @Test
+    void sendMarkdownDirect_buildsMarkdownV2MessageWithKeyboard_andReturnsMessageId() throws TelegramApiException {
         // Arrange
         final Message sent = new Message();
         sent.setMessageId(555);
         when(telegramClient.execute(any(SendMessage.class))).thenReturn(sent);
 
         // Act
-        final Optional<Integer> id = gateway.sendMarkdown(42L, "*Groceries*\n\n1\\. Buy milk", keyboard);
+        final Optional<Integer> id = gateway.sendMarkdownDirect(42L, "*Groceries*\n\n1\\. Buy milk", keyboard);
 
         // Assert
         assertThat(id).contains(555);
@@ -57,13 +72,14 @@ class TelegramApiMessageGatewayTest {
         assertThat(message.getValue().getText()).isEqualTo("*Groceries*\n\n1\\. Buy milk");
         assertThat(message.getValue().getParseMode()).isEqualTo("MarkdownV2");
         assertThat(message.getValue().getReplyMarkup()).isSameAs(keyboard);
+        verifyNoInteractions(messageQueue);
     }
 
     @Test
-    void sendMarkdown_returnsEmpty_whenTelegramRejectsTheSend() throws TelegramApiException {
+    void sendMarkdownDirect_returnsEmpty_whenTelegramRejectsTheSend() throws TelegramApiException {
         when(telegramClient.execute(any(SendMessage.class))).thenThrow(new TelegramApiException("boom"));
 
-        final Optional<Integer> id = gateway.sendMarkdown(42L, "text", keyboard);
+        final Optional<Integer> id = gateway.sendMarkdownDirect(42L, "text", keyboard);
 
         assertThat(id).isEmpty();
     }

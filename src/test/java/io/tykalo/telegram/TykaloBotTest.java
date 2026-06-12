@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.telegram.ratelimit.MessageQueueService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -32,11 +33,14 @@ class TykaloBotTest {
     @Mock
     private TelegramMessageGateway gateway;
 
+    @Mock
+    private MessageQueueService messageQueue;
+
     private TykaloBot bot;
 
     @BeforeEach
     void setUp() {
-        bot = new TykaloBot(new TelegramBotProperties("test-token", ""), dispatcher, gateway);
+        bot = new TykaloBot(new TelegramBotProperties("test-token", ""), dispatcher, gateway, messageQueue);
     }
 
     @AfterEach
@@ -76,6 +80,18 @@ class TykaloBotTest {
         // Assert
         assertThat(MDC.get("chatId")).isNull();
         assertThat(MDC.get("userId")).isNull();
+    }
+
+    @Test
+    void should_enqueueReply_when_dispatcherReturnsText() {
+        // Arrange
+        when(dispatcher.dispatch(any())).thenReturn(Optional.of("hello there"));
+
+        // Act
+        bot.handle(update(555L, 999L, "/start"));
+
+        // Assert — the reply is queued for paced delivery, not sent directly
+        verify(messageQueue).enqueue(555L, "hello there", null, null);
     }
 
     @Test

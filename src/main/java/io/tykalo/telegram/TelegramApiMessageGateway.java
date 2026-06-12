@@ -1,5 +1,6 @@
 package io.tykalo.telegram;
 
+import io.tykalo.telegram.ratelimit.MessageQueueService;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -13,8 +14,10 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Real {@link TelegramMessageGateway} backed by a {@link TelegramClient}, using the MarkdownV2
- * parse mode. Telegram errors are caught and logged rather than propagated: an edit that fails
- * because the message was deleted or is unchanged ("message is not modified") must not break the
+ * parse mode. New messages are queued through {@link MessageQueueService} so the rate-limit worker
+ * paces them (TK-173); edits, callback answers, and the one id-capturing publish go straight to the
+ * API. Telegram errors on the direct paths are caught and logged rather than propagated: an edit that
+ * fails because the message was deleted or is unchanged ("message is not modified") must not break the
  * surrounding command flow.
  */
 @Slf4j
@@ -23,14 +26,22 @@ public class TelegramApiMessageGateway implements TelegramMessageGateway {
     private static final String PARSE_MODE = "MarkdownV2";
 
     private final TelegramClient telegramClient;
+    private final MessageQueueService messageQueue;
 
-    public TelegramApiMessageGateway(final TelegramClient telegramClient) {
+    public TelegramApiMessageGateway(final TelegramClient telegramClient, final MessageQueueService messageQueue) {
         this.telegramClient = telegramClient;
+        this.messageQueue = messageQueue;
     }
 
     @Override
-    public Optional<Integer> sendMarkdown(final long chatId, final String markdownV2,
-                                          final @Nullable InlineKeyboardMarkup keyboard) {
+    public void sendMarkdown(final long chatId, final String markdownV2,
+                             final @Nullable InlineKeyboardMarkup keyboard) {
+        messageQueue.enqueue(chatId, markdownV2, PARSE_MODE, keyboard);
+    }
+
+    @Override
+    public Optional<Integer> sendMarkdownDirect(final long chatId, final String markdownV2,
+                                                final @Nullable InlineKeyboardMarkup keyboard) {
         final SendMessage send = SendMessage.builder()
                 .chatId(chatId)
                 .text(markdownV2)
