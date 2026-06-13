@@ -117,6 +117,7 @@ tykalo/
 │   │   │   ├── telegram/            # Bot framework, command dispatcher, handlers
 │   │   │   │   ├── handler/         # @TelegramCommand annotated classes
 │   │   │   │   ├── ratelimit/       # queue + retry logic
+│   │   │   │   ├── conversation/    # Redis-backed menu conversation state (TK-187)
 │   │   │   │   └── fsm/             # Spring StateMachine for dialogs (Phase 2+)
 │   │   │   ├── user/                # User domain
 │   │   │   │   ├── User.java        # entity
@@ -147,12 +148,18 @@ tykalo/
 ### Core entities
 
 **User**
-- `id` (UUID), `tgChatId` (Long), `tgUsername`, `timezone` (ZoneId), `quietHoursStart/End` (LocalTime), `locale`, `createdAt`
+- `id` (UUID), `tgChatId` (Long), `tgUsername`, `timezone` (ZoneId), `quietHoursStart/End` (LocalTime), `locale`, `createdAt`, `morningHour` (int, 0-23, default 8), `nudgerDailyLimit` (int, default 3), `listChangeNotifications` (enum, default BATCHED — see Permission model)
 - On first /start, auto-creates an `Inbox` List for them
 
 **List**
-- `id`, `ownerId` (User FK), `name`, `type` (enum), `recurrenceRule` (String, for ROUTINE), `nudgerDefaultPolicy` (enum)
+- `id`, `ownerId` (User FK — legacy authority, see Permission model), `name`, `type` (enum), `recurrenceRule` (String, for ROUTINE), `nudgerDefaultPolicy` (enum), `archivedAt?`
 - `type` enum: `CHECKLIST` (simple, no time, Nudgers off), `ROUTINE` (recurring as a whole, Nudgers opt-in), `PROJECT` (full tasks with deadlines, Nudgers per-task), `INBOX` (quick-capture, Nudgers off, default per-user list)
+- Multi-user sharing via `ListMember` (Phase 1.5b, TK-191)
+
+**ListMember** (Phase 1.5b)
+- `id`, `listId` (FK), `userId` (FK), `role` (OWNER/EDITOR/MEMBER), `joinedAt`
+- UNIQUE(list_id, user_id) — one role per user per list
+- A list always has exactly one OWNER
 
 **Task**
 - `id`, `listId` (FK), `ownerId` (FK), `title` (only required!), `description?`, `dueAt?`, `priority?`, `status` (TODO/DONE/CANCELLED), `recurrenceRule?`, `gcalEventId?`, `tags[]`
@@ -173,6 +180,32 @@ tykalo/
 - **Soft delete** for tasks and lists (`archivedAt` field) — so FK to nudge_log and task_completions doesn't break.
 - **Nudgers require consent.** Don't allow escalation until status is ACTIVE.
 - **Rate limits:** Telegram allows 30 msg/sec globally, 1 msg/sec per chat. All outgoing messages go through a Redis-backed queue.
+
+## Permission model (Phase 1.5b)
+
+Lists support multi-user sharing via `ListMember` with 3 roles:
+
+| Role | Add items | Toggle done | Edit list (rename, change type) | Manage members | Delete list |
+|------|-----------|-------------|---------------------------------|----------------|-------------|
+| OWNER | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EDITOR | ✅ | ✅ | ✅ | ✅ (except OWNER) | ❌ |
+| MEMBER | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+**Rules:**
+- A list always has exactly one OWNER
+- OWNER can transfer ownership; can't be removed by anyone — must transfer first
+- Multiple EDITORs allowed
+- Permission enforcement is at service boundary (`ListPermissionService`) — handlers don't check
+- For Phase 1.5a (pre-TK-191), all lists are single-user (owner_id is implicit OWNER)
+- TK-197 backfills `list_members` rows for existing lists (owner → OWNER role)
+
+**Notification preferences** (`User.listChangeNotifications`):
+- `INSTANT` — push on each change, aggregated 30s window per user/list ("@anna added 3 items")
+- `BATCHED` (default) — 10-min window per (user, list), flushed at window end ("Changes in 'Groceries' (last 10 min): @anna added 4 items, @petro completed 2")
+- `DAILY_DIGEST` — once per day at user's morning hour
+- `OFF` — no push, only live list-message Edit Message API (TK-195)
+
+Live message sync (TK-195) is always on regardless of preference — it's UI sync, not notification. Self-induced changes never produce push to the same user. Quiet hours respected for all push notifications.
 
 ## Coding conventions
 
@@ -344,7 +377,8 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ## Quick reference
 
-- **Current phase:** Phase 1 — Core MVP
+- **Current phase:** Phase 1.5 — Menu UX & Sharing (introduced after first live testing showed text commands weren't user-friendly and shared lists were critical for MVP)
+- **Phase order:** 1 (Core MVP) → **1.5a (Menu UX, ~3-4w) → 1.5b (Shared Lists, ~2-3w)** → 2 (Quality of Life) → 3 (AI) → 4 (Workspaces, gamification) → 5 (Integrations) → 6 (Multi-client)
 - **Linear project:** https://linear.app/tykalo/project/тикало
 - **Ticket ID format:** TK-XXX (mine) ↔ TYK-N (Linear ID)
 - **AI provider primary:** Anthropic Claude API

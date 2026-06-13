@@ -86,6 +86,48 @@
 
 ---
 
+## Phase 1.5 — Menu UX & Sharing
+**Goal:** menu-driven UI + shared lists для сімʼї/друзів · **Duration:** ~6 тижнів · **Tickets:** 16
+
+Введено після першого live-тесту MVP — text commands виявились незручні (multi-line на мобільному), shared lists виявились критичні для personal/family use.
+
+### Epic: Bug fix
+| ID | Title | Priority | Est. | Tags |
+|---|---|---|---|---|
+| TK-B001 | Fix: editable list message не re-render на /add і bulkAdd | 🔴 Critical | 1 | backend |
+
+### Epic: Menu UX (1.5a)
+| ID | Title | Priority | Est. | Tags |
+|---|---|---|---|---|
+| TK-187 | Conversation state framework (Redis-based) — foundation | 🔴 Critical | 2 | backend |
+| TK-181 | Main menu screen (/menu + auto після /start) | 🟠 High | 2 | backend |
+| TK-182 | My Lists screen з inline navigation | 🟠 High | 2 | backend |
+| TK-183 | List view screen as primary interaction surface | 🔴 Critical | 3 | backend |
+| TK-184 | Add items flow з "Done" button (заміна multi-line bulk) | 🔴 Critical | 2 | backend |
+| TK-185 | New list creation flow (type picker + name input) | 🟠 High | 2 | backend |
+| TK-186 | List settings menu (rename / change type / archive / delete) | 🟡 Medium | 2 | backend |
+| TK-189 | Help screen з inline navigation | 🟡 Medium | 1 | backend |
+
+### Epic: Shared Lists (1.5b)
+| ID | Title | Priority | Est. | Tags |
+|---|---|---|---|---|
+| TK-191 | list_members migration + entity — foundation | 🔴 Critical | 1 | backend |
+| TK-192 | OWNER/EDITOR/MEMBER permissions у services | 🔴 Critical | 2 | backend |
+| TK-193 | Invite members by @username або deep-link | 🟠 High | 2 | backend |
+| TK-194 | Members screen UI + manage actions | 🟠 High | 2 | backend |
+| TK-195 | Multi-user live message update | 🔴 Critical | 2 | backend |
+| TK-196 | Notification preferences + aggregator service | 🟠 High | 3 | backend |
+| TK-197 | Backfill list_members для existing lists | 🟠 High | 1 | backend |
+
+**Ролі:**
+- **OWNER** — творець, може все включно з delete list
+- **EDITOR** — все крім delete і transfer ownership
+- **MEMBER** — тільки add items + toggle done
+
+**Notification preferences** (per user): INSTANT / BATCHED (default) / DAILY_DIGEST / OFF. Live message update (TK-195) — завжди on, незалежно від prefs.
+
+---
+
 ## Phase 2 — Quality of Life
 **Goal:** зручність щоденного використання · **Duration:** 4–5 тижнів · **Tickets:** 17
 
@@ -225,12 +267,13 @@
 | Phase | Tickets | Estimate (days) | Calendar (solo, full focus) |
 |---|---|---|---|
 | **Phase 1 — Core MVP** | **27** | **~36** | **5 тижнів** |
+| **Phase 1.5 — Menu UX & Sharing** | **16** | **~30** | **~6 тижнів** |
 | Phase 2 — Quality of Life | 17 | ~30 | 4–5 тижнів |
 | Phase 3 — AI Layer | 13 | ~24 | 5–7 тижнів |
 | Phase 4 — Family & Motivation | 8 | ~14 | 3–4 тижні |
 | Phase 5 — Integrations | 7 | ~17 | 4–6 тижнів |
 | Phase 6 — Multi-client (опційно) | 5 | ~30 | flexible |
-| **TOTAL (Phase 1-5)** | **72** | **~121** | **~6 місяців full-time** |
+| **TOTAL (Phase 1-5)** | **88** | **~151** | **~7-8 місяців full-time** |
 
 **Якщо part-time** (вечори + вихідні, реалістично ~2–3 год/день): **~10–14 місяців до Phase 5**.
 

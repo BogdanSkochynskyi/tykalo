@@ -662,6 +662,349 @@ Daily backups.
 
 ---
 
+# Phase 1.5 — Menu UX & Sharing
+
+Introduced after first live testing of MVP showed text commands weren't user-friendly and shared lists were critical for personal/family use. Two sub-phases:
+
+- **1.5a (Menu UX, ~3-4 weeks):** TK-B001 + TK-181 to TK-189
+- **1.5b (Shared Lists, ~2-3 weeks):** TK-191 to TK-197
+
+## Bug fixes
+
+### TK-B001 (TYK-100) — Fix: editable list message не re-render on /add and bulkAdd
+
+**Epic:** Bug fix · **Estimate:** 1pt · **Priority:** Urgent
+
+The editable list message (from TK-124/125) only re-renders in the callback handler (✅/❌ toggle), not on `addTask`/`bulkAdd`. New items don't appear until next toggle.
+
+**Acceptance:**
+- Publish domain events `TaskAddedEvent` (and `TaskBulkAddedEvent`) in TaskService.addTask / bulkAdd
+- @EventListener in ListMessageService listens and re-renders via Edit Message API
+- Same for `archiveTask`, `editTask`, `snoozeTask` — any list state change → re-render
+- Integration test verifying Edit Message call on add (via WireMock on Telegram API)
+- Regression check that toggle ✅/❌ still works
+
+---
+
+## Menu UX (1.5a)
+
+### TK-187 (TYK-107) — Conversation state framework (Redis-based) — Foundation
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Blocks:** TK-181-186
+
+Simple Redis-based conversation state, cheaper than Spring StateMachine for menu navigation.
+
+**Acceptance:**
+- Service `ConversationStateService` with `getState(userId)`, `setState(userId, state)`, `clearState(userId)`
+- State model as sealed interface with records:
+  - `Idle`, `MainMenu`, `Lists`, `ListView(UUID listId)`, `AddingItems(UUID listId)`
+  - `CreatingListType`, `CreatingListName(ListType type)`, `ListSettings(UUID listId)`, `RenamingList(UUID listId)`
+  - Extensible — add more states as features grow
+- Stored in Redis: key `user:{userId}:state`, TTL 24h, JSON-serialized
+- `TelegramCommandDispatcher` checks state before handlers:
+  - Input-expecting state + non-command message → route to state handler
+  - Input-expecting state + command → exit state, handle command normally
+- Tests: state persistence, expiry, transitions, escape via command
+
+---
+
+### TK-181 (TYK-101) — Main menu screen (/menu + auto after /start)
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Deps:** TK-187
+
+Entry-point screen for menu-driven navigation. Replaces text-only welcome on /start.
+
+**Acceptance:**
+- `/menu` command shows main menu
+- After /start (for existing users) auto-shows main menu
+- Inline keyboard with 6 options:
+  - 📋 My Lists
+  - 👥 Shared with me (stub if TK-191 not done yet)
+  - ➕ Create new list
+  - 📊 Stats (stub for now)
+  - ⚙️ Settings
+  - ❓ Help
+- Each button has `callback_data` like `menu:my_lists`, `menu:create`, etc.
+- Callback handlers trigger transition to corresponding screen
+- Conversation state → `MAIN_MENU`
+- Text commands (`/lists`, `/help`, etc.) keep working in parallel (menu + commands)
+- Tests: command handler unit test, callback handler for navigation
+
+---
+
+### TK-182 (TYK-102) — My Lists screen with inline navigation
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Deps:** TK-181, TK-187
+
+Replaces `/lists` command with a rich navigable screen.
+
+**Acceptance:**
+- Shows all active (non-archived) Lists for user
+- Each entry: type icon (🛒 CHECKLIST / 📋 PROJECT / 🔄 ROUTINE / 📥 INBOX), name, counter `X items (Y done)`
+- Inline keyboard: 2 buttons per row (4 lists = 2 rows + bottom row)
+- Bottom row: `➕ New list`, `⬅️ Back to menu`
+- Tap on list → transition to Screen 3 (TK-183 list view)
+- If no lists (only Inbox): "You have only Inbox. Create your first list!" + New list button
+- Pagination if lists > 8 (next/prev)
+- Conversation state → `LISTS`
+- Tests: rendering with 0/1/many lists, pagination, navigation callbacks
+
+---
+
+### TK-183 (TYK-103) — List view screen as primary interaction surface
+
+**Epic:** Menu UX · **Estimate:** 3pt · **Deps:** TK-182, TK-187, TK-B001 · **Priority:** Urgent
+
+The main working screen — list with items and action buttons. Replaces the standalone editable list message from TK-124/125 as primary surface.
+
+**Acceptance:**
+- Header: type icon + list name + (for shared lists in Phase 1.5b) "👥 You + N members"
+- Body: all items with ✅/☐ indicator, max 20 items per page
+- Inline keyboard layout:
+  - 2 items per row, each is a toggle button (`✅ Milk` or `☐ Eggs`)
+  - Action row: `➕ Add items` (transition to TK-184)
+  - Settings row: `👥 Members` (Phase 1.5b stub), `⋯ More` (TK-186)
+  - Nav row: `⬅️ Back to lists`
+- Toggle works as today (TK-125) — edit in place
+- Pagination if > 20 items
+- Conversation state: `LIST_VIEW(listId)`
+- Replaces old auto editable list message behavior — now this is the primary screen
+- Tests: rendering with different item counts, pagination, navigation
+
+---
+
+### TK-184 (TYK-104) — Add items flow with "Done" button
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Deps:** TK-183, TK-187 · **Priority:** Urgent
+
+Replaces multi-line bulk-add (TK-123) with user-friendly item-by-item flow. Multi-line was awkward on mobile.
+
+**Acceptance:**
+- Tap `➕ Add items` from list view → conversation state: `ADDING_ITEMS(listId)`
+- Bot sends prompt: "Send items one by one. Tap **Done** when finished." + inline keyboard with `✅ Done` and `❌ Cancel`
+- Each text message (not a command, not a callback) in this state → new Task with title = text
+- Live update of list view (TK-183) after each addition — item appears in the list above the prompt message
+- `✅ Done` button → exit state, return to list view, delete prompt message
+- `❌ Cancel` → exit state, items added this session stay (recommend simple exit — user can toggle them)
+- If user sends a /command in ADDING_ITEMS state — handle command normally, exit state
+- Old multi-line bulk handler (TK-123) keeps working as shortcut — multi-line message → bulk-add without entering state
+- Tests: state transition, multi-message add, cancel/done, command escape
+
+---
+
+### TK-185 (TYK-105) — New list creation flow (type picker + name input)
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Deps:** TK-181, TK-187
+
+Replaces `/list create` with conversational flow.
+
+**Acceptance:**
+- Trigger: `➕ Create new list` from main menu or lists screen
+- Step 1: Type picker — 3 buttons with descriptions:
+  - `🛒 Checklist` — Simple items, no deadlines (shopping, packing)
+  - `📋 Project` — Tasks with deadlines and Nudgers (work, study)
+  - `🔄 Routine` — Recurring task group (gym, morning routine)
+- Step 2 (after type selected): prompt "Name your list:" + `❌ Cancel` button
+- User sends text → list created with selected type and name
+- Step 3: auto-transition to List view (TK-183) of the new list
+- ROUTINE type after creation → optional follow-up "Set up schedule now?" (delegate to TK-203 in Phase 2, skip for now)
+- Validation: name not blank, no duplicate name per user
+- Conversation state: `CREATING_LIST_TYPE` → `CREATING_LIST_NAME(type)`
+- Tests: full flow, cancel at each step, duplicate name handling
+
+---
+
+### TK-186 (TYK-106) — List settings menu (rename / change type / archive / delete)
+
+**Epic:** Menu UX · **Estimate:** 2pt · **Deps:** TK-183, TK-187
+
+`⋯ More` submenu for list-specific settings.
+
+**Acceptance:**
+- Trigger: `⋯ More` from list view → submenu screen
+- Buttons:
+  - `✏️ Rename` → prompt input → update name (permission check: OWNER+EDITOR when TK-192 is done)
+  - `🔄 Change type` → re-show type picker (TK-185 Step 1), update list.type
+  - `📦 Archive` → set archived_at, return to lists screen
+  - `🗑️ Delete` → 2-step confirmation prompt → hard delete (OWNER only)
+  - `⬅️ Back to list`
+- Change type warning for invalid scenarios (e.g. PROJECT with Nudgers → CHECKLIST — Nudgers must be removed first)
+- Archive vs Delete: Archive — soft, restorable; Delete — DESTRUCTIVE with confirm
+- Conversation state: `LIST_SETTINGS(listId)` → sub-states for prompt input
+- Tests: all actions, confirmation flows, permission check placeholders (until TK-192)
+
+---
+
+### TK-189 (TYK-108) — Help screen with inline navigation
+
+**Epic:** Menu UX · **Estimate:** 1pt · **Deps:** TK-181
+
+Replaces text-only `/help` from TK-171 with inline navigation back to menu and per-category drilldown.
+
+**Acceptance:**
+- `/help` command and `❓ Help` button in main menu → show help screen
+- Top-level: short intro + category buttons:
+  - `📋 Lists & tasks`
+  - `🔔 Nudgers`
+  - `⏰ Scheduling & timezone`
+  - `⚙️ Settings`
+  - `⬅️ Back to menu`
+- Tap category → submenu with commands in that category + descriptions
+- Submenu commands — markdown text, not interactive (like TK-171), but with Back button
+- Conversation state: `HELP` → `HELP_CATEGORY(category)`
+- Tests: navigation, that Back returns to main menu correctly
+
+---
+
+## Shared Lists (1.5b)
+
+### TK-191 (TYK-109) — list_members migration + entity + repository — Foundation
+
+**Epic:** Shared Lists · **Estimate:** 1pt · **Blocks:** TK-192, TK-193, TK-194, TK-195
+
+Migration + entity for shared list membership at List level (no Workspace abstraction).
+
+**Acceptance:**
+- `V?__list_members_table.sql`:
+  - `id` UUID PK
+  - `list_id` UUID FK → lists(id) ON DELETE CASCADE
+  - `user_id` UUID FK → users(id) ON DELETE CASCADE
+  - `role` VARCHAR NOT NULL — enum OWNER / EDITOR / MEMBER
+  - `joined_at` TIMESTAMPTZ NOT NULL
+  - UNIQUE(list_id, user_id) — one role per user per list
+- Index on (user_id, role) for "all lists where I'm member" queries
+- Index on (list_id) for "all members of a list" queries
+- Entity `ListMember` + repository `ListMemberRepository`
+- Enum `ListMemberRole`: OWNER, EDITOR, MEMBER
+- TK-197 does backfill for existing lists (owner → ListMember with role=OWNER)
+- Tests: entity persistence, unique constraint, cascade delete
+
+---
+
+### TK-192 (TYK-110) — List membership: OWNER/EDITOR/MEMBER permissions in services
+
+**Epic:** Shared Lists · **Estimate:** 2pt · **Deps:** TK-191 · **Priority:** Urgent
+
+Permission enforcement in service layer for shared lists. Every mutation goes through permission check.
+
+**Acceptance:**
+- Service `ListPermissionService` with methods:
+  - `canView(userId, listId)` — any role
+  - `canAddItems(userId, listId)` — OWNER+EDITOR+MEMBER
+  - `canToggleItems(userId, listId)` — OWNER+EDITOR+MEMBER (all items, not just own)
+  - `canEditList(userId, listId)` — OWNER+EDITOR (rename, change type, archive)
+  - `canManageMembers(userId, listId)` — OWNER+EDITOR (add/remove members, change roles except OWNER)
+  - `canDeleteList(userId, listId)` — OWNER ONLY
+  - `canTransferOwnership(userId, listId)` — OWNER ONLY
+- Exception `ListPermissionDeniedException` with clear message + list role
+- Integrated into ListService, TaskService — every mutation checks permission at boundary
+- For existing private lists (no member rows), `owner_id` in lists table remains authority until TK-197 backfill
+- `findAllAccessibleLists(userId)` — unions owner + member lists
+- Tests: all 7 permission checks for 3 roles + non-member case
+
+---
+
+### TK-193 (TYK-111) — Invite members by @username or deep-link
+
+**Epic:** Shared Lists · **Estimate:** 2pt · **Deps:** TK-191, TK-192
+
+UX and backend for inviting members to a list.
+
+**Acceptance:**
+- Two invite options:
+  1. **By @username** — owner/editor sends `@username` → search User with that `tg_username` → if found, send invitation prompt, add to list_members as PENDING; if not, offer deep-link
+  2. **Via deep-link** — generate `t.me/TykaloBot?start=list_invite_{base64({listId, invitedBy, role})}`
+- Invitation prompt to invitee: "[username] invites you to join list 'Groceries' as [role]. Accept?" + Yes/No
+- On Accept → ListMember.role = chosen (default MEMBER), notify inviter
+- On Decline → nothing added, notify inviter
+- Default role = MEMBER (inviter can choose EDITOR via dropdown)
+- Tests: full flow with both options, decline path, expired deep-link payload (Redis TTL)
+
+---
+
+### TK-194 (TYK-112) — Members screen UI + manage actions
+
+**Epic:** Shared Lists · **Estimate:** 2pt · **Deps:** TK-183, TK-187, TK-191, TK-193
+
+UI screen (Screen 5 in menu structure). Access via `👥 Members` from list view (TK-183).
+
+**Acceptance:**
+- Screen shows member list (OWNER on top, EDITOR next, MEMBER at bottom)
+- Each entry: name + role + `[Remove]` button (if current user is OWNER/EDITOR; OWNER cannot be removed by anyone — transfer first)
+- Bottom actions:
+  - `➕ Invite by username` (TK-193)
+  - `🔗 Get share link` (TK-193 deep-link)
+  - `⬅️ Back to list`
+- Tap `Remove [@username]` → confirmation prompt → remove from list_members + notify removed user
+- If current user is MEMBER → screen read-only without Remove buttons
+- If current user is OWNER → additional option `Transfer ownership to...`
+- Conversation state: `MEMBERS_SCREEN(listId)`
+- Tests: all 3 roles see correct UI, remove flow, transfer ownership (OWNER only)
+
+---
+
+### TK-195 (TYK-113) — Multi-user live message update for shared lists
+
+**Epic:** Shared Lists · **Estimate:** 2pt · **Deps:** TK-191, TK-B001 · **Priority:** Urgent
+
+Live update of the list-message for all members simultaneously on any change. Uses existing `list_messages` table (from TK-111), which already supports (list_id, tg_chat_id, tg_message_id).
+
+**Acceptance:**
+- On any list state change (add/remove/toggle item, rename) — listener finds all rows in `list_messages` for that list and calls Edit Message API for each
+- If member hasn't opened the list yet (no row) — nothing updates for them; they see current state on next open
+- Via rate limiter (TK-173) — all edits go through the queue
+- Race condition handling: if two members toggle different items simultaneously — last-write wins on Telegram side, but DB state is atomic per item (different rows)
+- Cleanup: if bot can't edit (message deleted by user or older than 48h) → remove row from `list_messages`
+- Edit happens regardless of notification preferences (TK-196) — it's UI sync, not notification
+- Tests: 2 users with different chat_ids, one changes, other sees update; cleanup on 400 Bad Request
+
+---
+
+### TK-196 (TYK-114) — Notification preferences + aggregator service
+
+**Epic:** Shared Lists · **Estimate:** 3pt · **Deps:** TK-191, TK-195
+
+User-configurable push notification preferences for shared list changes. Live message update (TK-195) is separate — this ticket is only about push notifications.
+
+**Acceptance:**
+- Migration: `ALTER users ADD COLUMN list_change_notifications VARCHAR NOT NULL DEFAULT 'BATCHED'`
+- Enum `ListChangeNotificationPreference`: INSTANT, BATCHED, DAILY_DIGEST, OFF
+- Settings screen adds "Notifications" section with radio buttons per option + description
+- Aggregator service:
+  - **INSTANT:** on each change → send aggregated message ("@anna added 3 items to Groceries"). 30-sec aggregation window — multiple changes from same user within 30s → one message
+  - **BATCHED** (default): Redis-based 10-min window per (user, list). Flush on window end or on next check (lazy). Format: "Changes in 'Groceries' (last 10 min): @anna added 4 items, @petro completed 2"
+  - **DAILY_DIGEST:** once per day at user's morning_hour. Format: "Daily list summary: ..."
+  - **OFF:** nothing, only live update
+- Don't notify the user who made the change
+- Don't notify during quiet hours (TK-142)
+- Tests: all 4 preferences, aggregation logic, quiet hours respect
+
+---
+
+### TK-197 (TYK-115) — Backfill list_members for existing lists
+
+**Epic:** Shared Lists · **Estimate:** 1pt · **Deps:** TK-191
+
+Backfill `list_members` for existing lists. Runs as a Flyway migration after TK-191 deploy.
+
+**Acceptance:**
+- Flyway migration `V?__backfill_list_members.sql`:
+  ```sql
+  INSERT INTO list_members (id, list_id, user_id, role, joined_at)
+  SELECT gen_random_uuid(), id, owner_id, 'OWNER', created_at
+  FROM lists
+  WHERE NOT EXISTS (
+      SELECT 1 FROM list_members WHERE list_id = lists.id AND user_id = lists.owner_id
+  );
+  ```
+- Idempotent (via NOT EXISTS) — re-running changes nothing
+- Auto-runs on next deploy (Flyway)
+- Integration test on fresh DB after all migrations: existing lists have OWNER row
+- After this, `lists.owner_id` becomes redundant (can be removed in a separate cleanup ticket in Phase 2+; for now keep as authority source for backwards compat in services)
+- Tests: integration test with existing data → backfill → expected rows in list_members
+
+---
+
 # Phase 2 — Quality of Life
 
 ## Recurring & Routine
