@@ -59,8 +59,12 @@ public sealed interface ConversationState {
     record ListView(UUID listId) implements ConversationState {
     }
 
-    /** Adding items to a list one message at a time (TK-184) — consumes plain-text input. */
-    record AddingItems(UUID listId) implements ConversationState {
+    /**
+     * Adding items to a list one message at a time (TK-184) — consumes plain-text input. Carries the
+     * id of the list-view message that opened the flow so each added item can re-render it in place,
+     * above the separate prompt message.
+     */
+    record AddingItems(UUID listId, int listViewMessageId) implements ConversationState {
         @Override
         public boolean expectsTextInput() {
             return true;

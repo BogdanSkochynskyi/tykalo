@@ -37,6 +37,12 @@ public interface TelegramMessageGateway {
     void editMarkdown(long chatId, int messageId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
 
     /**
+     * Deletes a message in place — e.g. the transient add-items prompt (TK-184) once the user is done.
+     * Best-effort: a message that is already gone (or too old to delete) is not an error.
+     */
+    void deleteMessage(long chatId, int messageId);
+
+    /**
      * Answers a callback query, dismissing the loading spinner shown after an inline-button tap.
      * Telegram requires this even when there is nothing to tell the user; pass {@code text} to show
      * a short toast, or {@code null} to just dismiss the spinner.

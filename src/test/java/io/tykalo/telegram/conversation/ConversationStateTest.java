@@ -29,7 +29,7 @@ class ConversationStateTest {
                 new MainMenu(),
                 new Lists(),
                 new ListView(listId),
-                new AddingItems(listId),
+                new AddingItems(listId, 42),
                 new CreatingListType(),
                 new CreatingListName(ListType.PROJECT),
                 new ListSettings(listId),
@@ -67,7 +67,7 @@ class ConversationStateTest {
     void expectsTextInput_isTrue_onlyForTheDataEntryStates() {
         final UUID listId = UUID.randomUUID();
 
-        assertThat(new AddingItems(listId).expectsTextInput()).isTrue();
+        assertThat(new AddingItems(listId, 42).expectsTextInput()).isTrue();
         assertThat(new CreatingListName(ListType.INBOX).expectsTextInput()).isTrue();
         assertThat(new RenamingList(listId).expectsTextInput()).isTrue();
 

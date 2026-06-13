@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -103,6 +104,25 @@ class TelegramApiMessageGatewayTest {
 
         // Act + Assert — no exception propagates
         gateway.editMarkdown(42L, 777, "text", keyboard);
+    }
+
+    @Test
+    void deleteMessage_buildsDeleteTargetingTheMessageId() throws TelegramApiException {
+        gateway.deleteMessage(42L, 888);
+
+        final ArgumentCaptor<DeleteMessage> delete = ArgumentCaptor.captor();
+        verify(telegramClient).execute(delete.capture());
+        assertThat(delete.getValue().getChatId()).isEqualTo("42");
+        assertThat(delete.getValue().getMessageId()).isEqualTo(888);
+    }
+
+    @Test
+    void deleteMessage_swallowsTelegramErrors_soTheFlowSurvivesAGoneMessage() throws TelegramApiException {
+        when(telegramClient.execute(any(DeleteMessage.class)))
+                .thenThrow(new TelegramApiException("message to delete not found"));
+
+        // Act + Assert — no exception propagates
+        gateway.deleteMessage(42L, 888);
     }
 
     @Test
