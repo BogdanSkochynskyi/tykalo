@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -71,6 +72,19 @@ public class TelegramApiMessageGateway implements TelegramMessageGateway {
             telegramClient.execute(edit);
         } catch (final TelegramApiException e) {
             log.warn("Failed to edit list message {} in chat {}", messageId, chatId, e);
+        }
+    }
+
+    @Override
+    public void deleteMessage(final long chatId, final int messageId) {
+        final DeleteMessage delete = DeleteMessage.builder()
+                .chatId(chatId)
+                .messageId(messageId)
+                .build();
+        try {
+            telegramClient.execute(delete);
+        } catch (final TelegramApiException e) {
+            log.warn("Failed to delete message {} in chat {}", messageId, chatId, e);
         }
     }
 

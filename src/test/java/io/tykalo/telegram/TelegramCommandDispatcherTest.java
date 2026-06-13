@@ -180,7 +180,7 @@ class TelegramCommandDispatcherTest {
     @Test
     void dispatch_routesNonCommandText_toStateHandler_whenStateExpectsInput() {
         final UUID userId = stubKnownUser();
-        final ConversationState state = new ConversationState.AddingItems(UUID.randomUUID());
+        final ConversationState state = new ConversationState.AddingItems(UUID.randomUUID(), 1);
         when(conversationState.getState(userId)).thenReturn(state);
 
         final AtomicReference<ConversationState> seen = new AtomicReference<>();
@@ -204,7 +204,7 @@ class TelegramCommandDispatcherTest {
     @Test
     void dispatch_fallsThroughToMessageHandlers_whenNoStateHandlerClaimsInput() {
         final UUID userId = stubKnownUser();
-        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID()));
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID(), 1));
 
         final AtomicReference<Boolean> messageHandlerCalled = new AtomicReference<>(false);
         dispatcher.postProcessAfterInitialization((MessageHandler) update -> {
@@ -243,7 +243,7 @@ class TelegramCommandDispatcherTest {
     @Test
     void dispatch_command_exitsInputExpectingState_thenRunsCommandNormally() {
         final UUID userId = stubKnownUser();
-        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID()));
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID(), 1));
 
         assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("/start"))).contains("started");
         verify(conversationState).clearState(userId);

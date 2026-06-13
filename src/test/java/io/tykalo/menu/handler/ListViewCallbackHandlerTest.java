@@ -11,6 +11,7 @@ import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
 import io.tykalo.list.TaskStatus;
+import io.tykalo.menu.AddItemsService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.user.User;
@@ -45,6 +46,9 @@ class ListViewCallbackHandlerTest {
 
     @Mock
     private MyListsService myListsService;
+
+    @Mock
+    private AddItemsService addItemsService;
 
     @InjectMocks
     private ListViewCallbackHandler handler;
@@ -134,12 +138,24 @@ class ListViewCallbackHandlerTest {
     }
 
     @Test
-    void addItems_isAStub_pointingAtTheAddCommand() {
+    void addItems_startsTheAddFlow() {
+        stubUser();
+        when(addItemsService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.of("Groceries"));
+
         final Optional<String> toast =
                 handler.handle(callbackOnMessage(ListViewService.ADD_PREFIX + list.getId()));
 
-        assertThat(toast).get().asString().contains("/add");
-        verifyNoInteractions(userRepository, taskService, listViewService, myListsService);
+        assertThat(toast).get().asString().contains("Adding items");
+        verify(addItemsService).start(user, MESSAGE_ID, list.getId());
+    }
+
+    @Test
+    void addItems_reportsListGone_whenStartFindsNoList() {
+        stubUser();
+        when(addItemsService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.empty());
+
+        assertThat(handler.handle(callbackOnMessage(ListViewService.ADD_PREFIX + list.getId())))
+                .get().asString().contains("no longer available");
     }
 
     @Test

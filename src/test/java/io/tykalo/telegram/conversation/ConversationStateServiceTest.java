@@ -71,7 +71,7 @@ class ConversationStateServiceTest {
         when(redis.opsForValue()).thenReturn(valueOps);
         final UUID listId = UUID.randomUUID();
 
-        service.setState(USER_ID, new AddingItems(listId));
+        service.setState(USER_ID, new AddingItems(listId, 7));
 
         final ArgumentCaptor<String> json = ArgumentCaptor.captor();
         verify(valueOps).set(eq(KEY), json.capture(), eq(Duration.ofHours(24)));

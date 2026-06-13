@@ -2,6 +2,7 @@ package io.tykalo.menu.handler;
 
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskService;
+import io.tykalo.menu.AddItemsService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.telegram.CallbackHandler;
@@ -18,8 +19,8 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 /**
  * Handles the list-view buttons (TK-183), claiming the {@code lv:} {@code callback_data} prefix:
  * {@code lv:done|undo:{task}:{page}} toggles an item and re-renders the same page in place,
- * {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen, and
- * {@code lv:add|members|more:{list}} are placeholders until the add-items flow (TK-184), sharing
+ * {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen, {@code lv:add:{list}}
+ * starts the add-items flow (TK-184), and {@code lv:members|more:{list}} are placeholders until sharing
  * (Phase 1.5b) and the more menu (TK-186) land. Everything that edits the screen re-resolves the
  * clicking user from the chat and takes the message id from the callback. Non-{@code lv:} callbacks
  * are left unclaimed.
@@ -34,15 +35,13 @@ public class ListViewCallbackHandler implements CallbackHandler {
     private final TaskService taskService;
     private final ListViewService listViewService;
     private final MyListsService myListsService;
+    private final AddItemsService addItemsService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
         final String data = callback.getData();
         if (data == null || !data.startsWith("lv:")) {
             return Optional.empty();
-        }
-        if (data.startsWith(ListViewService.ADD_PREFIX)) {
-            return Optional.of("➕ Add items is coming soon (TK-184) — use /add for now.");
         }
         if (data.startsWith(ListViewService.MEMBERS_PREFIX)) {
             return Optional.of("👥 Sharing is coming soon.");
@@ -63,6 +62,15 @@ public class ListViewCallbackHandler implements CallbackHandler {
         if (data.equals(ListViewService.BACK)) {
             myListsService.navigate(user.get(), messageId, 0);
             return Optional.of("📋 My Lists");
+        }
+        if (data.startsWith(ListViewService.ADD_PREFIX)) {
+            final UUID listId = parseUuid(data.substring(ListViewService.ADD_PREFIX.length()));
+            if (listId == null) {
+                return Optional.of(EXPIRED);
+            }
+            return addItemsService.start(user.get(), messageId, listId)
+                    .map("➕ Adding items to "::concat)
+                    .or(() -> Optional.of("That list is no longer available."));
         }
         if (data.startsWith(ListViewService.DONE_PREFIX)) {
             return toggle(data.substring(ListViewService.DONE_PREFIX.length()), user.get(), messageId, true);

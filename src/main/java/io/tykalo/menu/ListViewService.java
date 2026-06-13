@@ -62,6 +62,15 @@ public class ListViewService {
     }
 
     /**
+     * Re-renders the list view showing its last page, where freshly appended items land — used by the
+     * add-items flow (TK-184) so the just-added item is visible. {@link #show} clamps the page to the
+     * last one.
+     */
+    public Optional<String> showLastPage(final User user, final int messageId, final UUID listId) {
+        return show(user, messageId, listId, Integer.MAX_VALUE);
+    }
+
+    /**
      * Renders the list view for {@code listId} at {@code page} into {@code messageId}, in place, and
      * sets the user's state to {@code ListView}. Returns the list name when shown, or empty if the
      * list no longer exists (archived/deleted) — the caller turns that into a toast.

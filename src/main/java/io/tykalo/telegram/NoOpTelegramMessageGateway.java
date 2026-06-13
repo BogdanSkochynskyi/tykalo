@@ -32,6 +32,11 @@ public class NoOpTelegramMessageGateway implements TelegramMessageGateway {
     }
 
     @Override
+    public void deleteMessage(final long chatId, final int messageId) {
+        log.debug("Polling disabled — suppressing delete of message {} in chat {}", messageId, chatId);
+    }
+
+    @Override
     public void answerCallback(final String callbackQueryId, final @Nullable String text) {
         log.debug("Polling disabled — suppressing answer to callback query {}", callbackQueryId);
     }

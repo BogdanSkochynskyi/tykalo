@@ -36,9 +36,9 @@ class ConversationStatePersistenceIntegrationTest extends AbstractIntegrationTes
     @Test
     void setThenGet_roundTripsThroughRedis() {
         final UUID listId = UUID.randomUUID();
-        service.setState(userId, new AddingItems(listId));
+        service.setState(userId, new AddingItems(listId, 13));
 
-        assertThat(service.getState(userId)).isEqualTo(new AddingItems(listId));
+        assertThat(service.getState(userId)).isEqualTo(new AddingItems(listId, 13));
     }
 
     @Test
