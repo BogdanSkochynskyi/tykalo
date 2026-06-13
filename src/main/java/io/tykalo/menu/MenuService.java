@@ -45,11 +45,21 @@ public class MenuService {
     private final TelegramMessageGateway gateway;
     private final ConversationStateService conversationState;
 
-    /** Sends the main menu to the user and sets their conversation state to {@code MainMenu}. */
+    /** Sends the main menu to the user as a new message and sets their state to {@code MainMenu}. */
     public void showMainMenu(final User user) {
         conversationState.setState(user.getId(), new ConversationState.MainMenu());
         gateway.sendMarkdown(user.getTgChatId(), ListRenderer.escape(MENU_TEXT), mainMenuKeyboard());
         log.debug("Showed main menu to user id={}", user.getId());
+    }
+
+    /**
+     * Renders the main menu into an existing message (in place) and sets the state to
+     * {@code MainMenu} — the "⬅️ Back to menu" navigation from a sub-screen.
+     */
+    public void editToMainMenu(final User user, final int messageId) {
+        conversationState.setState(user.getId(), new ConversationState.MainMenu());
+        gateway.editMarkdown(user.getTgChatId(), messageId, ListRenderer.escape(MENU_TEXT), mainMenuKeyboard());
+        log.debug("Returned user id={} to the main menu", user.getId());
     }
 
     private InlineKeyboardMarkup mainMenuKeyboard() {

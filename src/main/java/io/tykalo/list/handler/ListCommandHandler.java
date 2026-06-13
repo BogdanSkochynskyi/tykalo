@@ -7,7 +7,6 @@ import io.tykalo.list.TaskService;
 import io.tykalo.telegram.TelegramCommand;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
-import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -18,7 +17,8 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 
 /**
- * List-management commands: {@code /lists}, {@code /list create} and {@code /list delete}.
+ * List-management commands: {@code /list create} and {@code /list delete}. (The {@code /lists}
+ * listing now opens the navigable My Lists screen — see {@code menu/MyListsCommandHandler}, TK-182.)
  *
  * <p>The dispatcher routes by the first token only, so {@code create}/{@code delete} are parsed
  * here as sub-commands of {@code /list}. Deletion is confirmed in a single stateless step —
@@ -34,24 +34,6 @@ public class ListCommandHandler {
     private final UserService userService;
     private final ListService listService;
     private final TaskService taskService;
-
-    @TelegramCommand("/lists")
-    public String lists(final Update update) {
-        final User user = userService.findOrCreate(update);
-        final List<TaskList> lists = listService.findAllByOwner(Objects.requireNonNull(user.getId()));
-        if (lists.isEmpty()) {
-            return "You have no lists yet. Create one with /list create <name> [type].";
-        }
-        final StringBuilder rendered = new StringBuilder("📋 Your lists:\n");
-        int index = 1;
-        for (final TaskList list : lists) {
-            final long count = taskService.countActiveTasks(Objects.requireNonNull(list.getId()));
-            rendered.append(index++).append(". ").append(list.getName())
-                    .append(" (").append(list.getType()).append(") — ")
-                    .append(count).append(count == 1 ? " task" : " tasks").append('\n');
-        }
-        return rendered.toString().stripTrailing();
-    }
 
     @TelegramCommand("/list")
     public String list(final Update update) {

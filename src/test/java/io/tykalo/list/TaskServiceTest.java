@@ -661,6 +661,18 @@ class TaskServiceTest {
     }
 
     @Test
+    void counts_reportsTotalAndDoneForAList() {
+        final UUID listId = UUID.randomUUID();
+        when(taskRepository.countByListIdAndArchivedAtIsNull(listId)).thenReturn(5L);
+        when(taskRepository.countByListIdAndStatusAndArchivedAtIsNull(listId, TaskStatus.DONE)).thenReturn(2L);
+
+        final TaskService.Counts counts = taskService.counts(listId);
+
+        assertThat(counts.total()).isEqualTo(5L);
+        assertThat(counts.done()).isEqualTo(2L);
+    }
+
+    @Test
     void findOverdue_delegatesToOwnerScopedQuery() {
         // Arrange
         final UUID ownerId = UUID.randomUUID();
