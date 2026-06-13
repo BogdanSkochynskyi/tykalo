@@ -92,6 +92,36 @@ class UserServiceTest {
     }
 
     @Test
+    void find_returnsExistingUser_withoutCreating() {
+        final Update update = TelegramUpdateFixtures.command("hi there", 42L, "bob", "uk");
+        final User existing = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userRepository.findByTgChatId(42L)).thenReturn(Optional.of(existing));
+
+        final Optional<User> result = userService.find(update);
+
+        assertThat(result).containsSame(existing);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void find_returnsEmpty_andCreatesNothing_whenUserUnknown() {
+        final Update update = TelegramUpdateFixtures.command("hi there", 42L, "bob", "uk");
+        when(userRepository.findByTgChatId(42L)).thenReturn(Optional.empty());
+
+        final Optional<User> result = userService.find(update);
+
+        assertThat(result).isEmpty();
+        verify(userRepository, never()).save(any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void find_returnsEmpty_whenUpdateHasNoMessage() {
+        assertThat(userService.find(TelegramUpdateFixtures.withoutMessage())).isEmpty();
+        verify(userRepository, never()).findByTgChatId(any());
+    }
+
+    @Test
     void register_reportsCreatedFalse_forExistingUser() {
         // Arrange
         final Update update = TelegramUpdateFixtures.command("/start", 42L, "bob", "uk");

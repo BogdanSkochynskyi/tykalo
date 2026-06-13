@@ -2,13 +2,28 @@ package io.tykalo.telegram;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.tykalo.telegram.conversation.ConversationState;
+import io.tykalo.telegram.conversation.ConversationStateService;
+import io.tykalo.telegram.conversation.StateHandler;
+import io.tykalo.user.User;
+import io.tykalo.user.UserService;
+import java.time.ZoneId;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
+@ExtendWith(MockitoExtension.class)
 class TelegramCommandDispatcherTest {
 
     static class Handlers {
@@ -23,11 +38,26 @@ class TelegramCommandDispatcherTest {
         }
     }
 
-    private final TelegramCommandDispatcher dispatcher = new TelegramCommandDispatcher();
+    @Mock
+    private ConversationStateService conversationState;
+
+    @Mock
+    private UserService userService;
+
+    private TelegramCommandDispatcher dispatcher;
 
     @BeforeEach
     void registerHandlers() {
+        dispatcher = new TelegramCommandDispatcher(conversationState, userService);
         dispatcher.postProcessAfterInitialization(new Handlers(), "handlers");
+    }
+
+    private UUID stubKnownUser() {
+        final UUID userId = UUID.randomUUID();
+        final User user = User.create(100L, "tester", ZoneId.of("Europe/Kyiv"), "en");
+        user.setId(userId);
+        when(userService.find(any(Update.class))).thenReturn(Optional.of(user));
+        return userId;
     }
 
     @Test
@@ -148,8 +178,89 @@ class TelegramCommandDispatcherTest {
     }
 
     @Test
+    void dispatch_routesNonCommandText_toStateHandler_whenStateExpectsInput() {
+        final UUID userId = stubKnownUser();
+        final ConversationState state = new ConversationState.AddingItems(UUID.randomUUID());
+        when(conversationState.getState(userId)).thenReturn(state);
+
+        final AtomicReference<ConversationState> seen = new AtomicReference<>();
+        dispatcher.postProcessAfterInitialization(new StateHandler() {
+            @Override
+            public boolean canHandle(final ConversationState s) {
+                return s instanceof ConversationState.AddingItems;
+            }
+
+            @Override
+            public Optional<String> handle(final Update update, final ConversationState s) {
+                seen.set(s);
+                return Optional.of("item added");
+            }
+        }, "stateHandler");
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("milk"))).contains("item added");
+        assertThat(seen.get()).isEqualTo(state);
+    }
+
+    @Test
+    void dispatch_fallsThroughToMessageHandlers_whenNoStateHandlerClaimsInput() {
+        final UUID userId = stubKnownUser();
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID()));
+
+        final AtomicReference<Boolean> messageHandlerCalled = new AtomicReference<>(false);
+        dispatcher.postProcessAfterInitialization((MessageHandler) update -> {
+            messageHandlerCalled.set(true);
+            return Optional.of("bulk");
+        }, "messageHandler");
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("milk"))).contains("bulk");
+        assertThat(messageHandlerCalled.get()).isTrue();
+    }
+
+    @Test
+    void dispatch_doesNotConsultStateHandlers_whenStateIsNotInputExpecting() {
+        final UUID userId = stubKnownUser();
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.MainMenu());
+
+        final AtomicReference<Boolean> stateHandlerConsulted = new AtomicReference<>(false);
+        dispatcher.postProcessAfterInitialization(new StateHandler() {
+            @Override
+            public boolean canHandle(final ConversationState s) {
+                stateHandlerConsulted.set(true);
+                return true;
+            }
+
+            @Override
+            public Optional<String> handle(final Update update, final ConversationState s) {
+                return Optional.of("from-state");
+            }
+        }, "stateHandler");
+        dispatcher.postProcessAfterInitialization((MessageHandler) update -> Optional.of("bulk"), "messageHandler");
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("hi"))).contains("bulk");
+        assertThat(stateHandlerConsulted.get()).isFalse();
+    }
+
+    @Test
+    void dispatch_command_exitsInputExpectingState_thenRunsCommandNormally() {
+        final UUID userId = stubKnownUser();
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.AddingItems(UUID.randomUUID()));
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("/start"))).contains("started");
+        verify(conversationState).clearState(userId);
+    }
+
+    @Test
+    void dispatch_command_leavesNavigationStateIntact() {
+        final UUID userId = stubKnownUser();
+        when(conversationState.getState(userId)).thenReturn(new ConversationState.MainMenu());
+
+        assertThat(dispatcher.dispatch(TelegramUpdateFixtures.textMessage("/start"))).contains("started");
+        verify(conversationState, never()).clearState(any());
+    }
+
+    @Test
     void dispatch_returnsEmpty_whenHandlerReturnsNull() {
-        final TelegramCommandDispatcher local = new TelegramCommandDispatcher();
+        final TelegramCommandDispatcher local = new TelegramCommandDispatcher(conversationState, userService);
         local.postProcessAfterInitialization(new Object() {
             @TelegramCommand("/silent")
             public String silent(final Update update) {

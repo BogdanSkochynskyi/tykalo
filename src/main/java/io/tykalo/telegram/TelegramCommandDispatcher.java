@@ -1,5 +1,10 @@
 package io.tykalo.telegram;
 
+import io.tykalo.telegram.conversation.ConversationState;
+import io.tykalo.telegram.conversation.ConversationStateService;
+import io.tykalo.telegram.conversation.StateHandler;
+import io.tykalo.user.User;
+import io.tykalo.user.UserService;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -8,10 +13,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.MethodIntrospector;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Component;
@@ -24,6 +31,13 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  * Discovers {@link TelegramCommand}-annotated methods on every Spring bean at startup
  * and routes incoming updates to them by command. Pure routing — it never touches the
  * Telegram API, so it is cheap to instantiate and lives in every application context.
+ *
+ * <p>Before the ordinary command/message handlers it consults the user's
+ * {@link ConversationState} (TK-187): a plain-text message in an input-expecting state is routed to
+ * the matching {@link StateHandler} instead of the message handlers, and a command issued in such a
+ * state first exits it, then runs normally. Resolving the user and reading the state are deferred
+ * collaborators — injected {@code @Lazy} because this bean is a {@link BeanPostProcessor} created
+ * before the Redis/JPA infrastructure those collaborators need.
  */
 @Component
 @Slf4j
@@ -32,6 +46,16 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
     private final Map<String, CommandHandler> handlers = new HashMap<>();
     private final List<MessageHandler> messageHandlers = new ArrayList<>();
     private final List<CallbackHandler> callbackHandlers = new ArrayList<>();
+    private final List<StateHandler> stateHandlers = new ArrayList<>();
+
+    private final ConversationStateService conversationState;
+    private final UserService userService;
+
+    public TelegramCommandDispatcher(@Lazy final ConversationStateService conversationState,
+                                     @Lazy final UserService userService) {
+        this.conversationState = conversationState;
+        this.userService = userService;
+    }
 
     @Override
     public Object postProcessAfterInitialization(final Object bean, final String beanName) {
@@ -48,6 +72,10 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
         if (bean instanceof CallbackHandler callbackHandler) {
             callbackHandlers.add(callbackHandler);
             log.debug("Registered callback handler -> {}", bean.getClass().getName());
+        }
+        if (bean instanceof StateHandler stateHandler) {
+            stateHandlers.add(stateHandler);
+            log.debug("Registered state handler -> {}", bean.getClass().getName());
         }
         return bean;
     }
@@ -83,14 +111,52 @@ public class TelegramCommandDispatcher implements BeanPostProcessor {
         }
         final String command = extractCommand(message.getText());
         if (command == null) {
-            return dispatchToMessageHandlers(update);
+            return dispatchText(update);
         }
+        exitInputExpectingState(update);
         final CommandHandler handler = handlers.get(command);
         if (handler == null) {
             log.debug("No handler registered for command '{}'", command);
             return Optional.empty();
         }
         return Optional.ofNullable(handler.invoke(update));
+    }
+
+    /**
+     * Routes a plain-text message. In an input-expecting {@link ConversationState} the first
+     * {@link StateHandler} that claims the state owns the message (its result is returned as-is, even
+     * when empty); otherwise — including every message in a navigation or idle state — it falls
+     * through to the ordinary message handlers.
+     */
+    private Optional<String> dispatchText(final Update update) {
+        final Optional<UUID> userId = currentUserId(update);
+        if (userId.isPresent()) {
+            final ConversationState state = conversationState.getState(userId.get());
+            if (state.expectsTextInput()) {
+                for (final StateHandler handler : stateHandlers) {
+                    if (handler.canHandle(state)) {
+                        return handler.handle(update, state);
+                    }
+                }
+            }
+        }
+        return dispatchToMessageHandlers(update);
+    }
+
+    /** A command breaks out of any input-expecting flow before it runs (a navigation state is left intact). */
+    private void exitInputExpectingState(final Update update) {
+        final Optional<UUID> userId = currentUserId(update);
+        if (userId.isEmpty()) {
+            return;
+        }
+        if (conversationState.getState(userId.get()).expectsTextInput()) {
+            conversationState.clearState(userId.get());
+            log.debug("Command received while awaiting input; cleared conversation state for user {}", userId.get());
+        }
+    }
+
+    private Optional<UUID> currentUserId(final Update update) {
+        return userService.find(update).map(User::getId);
     }
 
     /** Consults plain-message handlers in registration order, returning the first non-empty reply. */
