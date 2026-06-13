@@ -560,6 +560,107 @@ class TaskServiceTest {
     }
 
     @Test
+    void createTask_announcesListChange_soTheLiveMessageRefreshes() {
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.createTask(list.getId(), "Buy milk");
+
+        verify(eventPublisher).publishEvent(new ListChangedEvent(list.getId()));
+    }
+
+    @Test
+    void createTasks_announcesListChangeOnce_whenAnythingWasCreated() {
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.createTasks(list.getId(), List.of("milk", "bread"));
+
+        verify(eventPublisher, times(1)).publishEvent(new ListChangedEvent(list.getId()));
+    }
+
+    @Test
+    void createTasks_doesNotAnnounce_whenAllTitlesBlank() {
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        taskService.createTasks(list.getId(), List.of("   ", ""));
+
+        verify(eventPublisher, never()).publishEvent(any(ListChangedEvent.class));
+    }
+
+    @Test
+    void markDone_announcesListChange_whenItToggled() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(id);
+
+        verify(eventPublisher).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
+    void markDone_doesNotAnnounce_whenAlreadyDone() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(id);
+
+        verify(eventPublisher, never()).publishEvent(any(ListChangedEvent.class));
+    }
+
+    @Test
+    void reopen_announcesListChange_whenItToggled() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.reopen(id);
+
+        verify(eventPublisher).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
+    void updateTitle_announcesListChange() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.updateTitle(id, "New title");
+
+        verify(eventPublisher).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
+    void snoozeUntil_announcesListChange() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.snoozeUntil(id, Instant.now().plus(1, ChronoUnit.DAYS));
+
+        verify(eventPublisher).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
+    void deleteTask_announcesListChange_onFirstArchive_butNotAgain() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.deleteTask(id);
+        taskService.deleteTask(id);
+
+        verify(eventPublisher, times(1)).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
     void findOverdue_delegatesToOwnerScopedQuery() {
         // Arrange
         final UUID ownerId = UUID.randomUUID();

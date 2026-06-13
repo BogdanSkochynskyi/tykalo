@@ -7,6 +7,7 @@ testcontainers = "2.0.5"
 logstash-logback-encoder = "8.1"
 sentry = "8.9.0"
 shedlock = "7.7.0"   # NOT in the Spring Boot BOM — pin it (7.x targets Java 17+ and Spring 7 / Boot 4)
+wiremock = "3.13.1"  # test-only; stubs the Telegram HTTP API. Standalone (shaded Jetty) to avoid clashing with Boot's Jetty 12
 
 [libraries]
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -33,6 +34,7 @@ logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-enc
 sentry-logback = { module = "io.sentry:sentry-logback", version.ref = "sentry" }
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
 shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
