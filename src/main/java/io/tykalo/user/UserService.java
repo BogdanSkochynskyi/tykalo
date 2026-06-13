@@ -2,6 +2,7 @@ package io.tykalo.user;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -45,6 +46,20 @@ public class UserService {
     @Transactional
     public User findOrCreate(final Update update) {
         return register(update).user();
+    }
+
+    /**
+     * Looks up the user behind an update <em>without</em> creating one — for routing that must not
+     * materialise a user as a side effect (e.g. the dispatcher's conversation-state check on every
+     * incoming message). Empty before the user's first {@code /start}.
+     */
+    @Transactional(readOnly = true)
+    public Optional<User> find(final Update update) {
+        final Message message = update.getMessage();
+        if (message == null || message.getFrom() == null) {
+            return Optional.empty();
+        }
+        return userRepository.findByTgChatId(message.getChatId());
     }
 
     /**
