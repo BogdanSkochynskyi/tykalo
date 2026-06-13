@@ -21,6 +21,9 @@ public class HelpCommandHandler {
     private static final String HELP = """
             🤖 Tykalo — your task & list bot. Here's everything I can do:
 
+            🏠 Menu
+            /menu — open the menu to browse lists and settings
+
             📋 Lists
             /lists — show your lists
             /list create <name> [type] — create a list (CHECKLIST, ROUTINE or PROJECT)
