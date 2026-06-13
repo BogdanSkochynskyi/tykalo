@@ -224,6 +224,18 @@ public class TaskService {
         return taskRepository.countByListIdAndArchivedAtIsNull(listId);
     }
 
+    /** Live-task counts for a list: total non-archived and how many of those are DONE. */
+    @Transactional(readOnly = true)
+    public Counts counts(final UUID listId) {
+        final long total = taskRepository.countByListIdAndArchivedAtIsNull(listId);
+        final long done = taskRepository.countByListIdAndStatusAndArchivedAtIsNull(listId, TaskStatus.DONE);
+        return new Counts(total, done);
+    }
+
+    /** A list's live-task tally: {@code total} non-archived tasks, of which {@code done} are complete. */
+    public record Counts(long total, long done) {
+    }
+
     /** An owner's still-actionable tasks due during their local calendar day in {@code zone}. */
     @Transactional(readOnly = true)
     public List<Task> findToday(final UUID ownerId, final ZoneId zone) {

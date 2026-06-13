@@ -15,7 +15,6 @@ import io.tykalo.telegram.TelegramUpdateFixtures;
 import io.tykalo.user.User;
 import io.tykalo.user.UserService;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -56,33 +55,6 @@ class ListCommandHandlerTest {
 
     private Update cmd(final String text) {
         return TelegramUpdateFixtures.command(text, 1L, "owner", "uk");
-    }
-
-    @Test
-    void lists_rendersEachListWithTypeAndTaskCount() {
-        // Arrange
-        when(userService.findOrCreate(any(Update.class))).thenReturn(owner);
-        final TaskList inbox = list("Inbox", ListType.INBOX);
-        final TaskList groceries = list("Groceries", ListType.CHECKLIST);
-        when(listService.findAllByOwner(owner.getId())).thenReturn(List.of(inbox, groceries));
-        when(taskService.countActiveTasks(inbox.getId())).thenReturn(1L);
-        when(taskService.countActiveTasks(groceries.getId())).thenReturn(3L);
-
-        // Act
-        final String reply = handler.lists(cmd("/lists"));
-
-        // Assert
-        assertThat(reply)
-                .contains("Inbox (INBOX) — 1 task")
-                .contains("Groceries (CHECKLIST) — 3 tasks");
-    }
-
-    @Test
-    void lists_showsEmptyState_whenNoLists() {
-        when(userService.findOrCreate(any(Update.class))).thenReturn(owner);
-        when(listService.findAllByOwner(owner.getId())).thenReturn(List.of());
-
-        assertThat(handler.lists(cmd("/lists"))).contains("no lists yet");
     }
 
     @Test

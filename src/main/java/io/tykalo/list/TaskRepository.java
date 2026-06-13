@@ -18,6 +18,8 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     long countByListIdAndArchivedAtIsNull(UUID listId);
 
+    long countByListIdAndStatusAndArchivedAtIsNull(UUID listId, TaskStatus status);
+
     /**
      * Still-actionable tasks past their due date: {@code TODO}, due before {@code now}, not archived.
      */
