@@ -1,5 +1,6 @@
 package io.tykalo.user.handler;
 
+import io.tykalo.menu.MenuService;
 import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
 import io.tykalo.nudger.NudgerPromptService;
@@ -25,7 +26,9 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  *
  * <p>A genuine first {@code /start} with no invite kicks off the 3-step onboarding (TK-172): the
  * {@link OnboardingService} owns the messages from there, so this handler stays silent. Invited
- * users skip onboarding — their greeting + consent prompt take over instead.
+ * users skip onboarding — their greeting + consent prompt take over instead. A returning user gets
+ * the main menu (TK-181) via {@link MenuService} rather than a text-only welcome, so the handler is
+ * again silent on that path.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,6 +38,7 @@ public class StartCommandHandler {
     private final NudgerService nudgerService;
     private final NudgerPromptService promptService;
     private final OnboardingService onboardingService;
+    private final MenuService menuService;
 
     @TelegramCommand("/start")
     public @Nullable String start(final Update update) {
@@ -48,7 +52,8 @@ public class StartCommandHandler {
             onboardingService.begin(user);
             return null;
         }
-        return greeting(user);
+        menuService.showMainMenu(user);
+        return null;
     }
 
     private String inviteNote(final Update update, final User invitee) {
