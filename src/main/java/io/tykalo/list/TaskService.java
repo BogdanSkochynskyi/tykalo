@@ -282,6 +282,12 @@ public class TaskService {
         return taskRepository.findById(taskId);
     }
 
+    /** A list's live (non-archived) tasks, oldest first — the body of the list view. */
+    @Transactional(readOnly = true)
+    public List<Task> activeTasks(final UUID listId) {
+        return taskRepository.findByListIdAndArchivedAtIsNullOrderByCreatedAtAsc(listId);
+    }
+
     /**
      * On completion of a recurring task (TK-146) creates its next instance in the same transaction.
      * Skips when the task has no recurrence rule, no {@code dueAt} to anchor from, or was manually

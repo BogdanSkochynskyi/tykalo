@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.user.User;
@@ -36,6 +37,9 @@ class MyListsCallbackHandlerTest {
 
     @Mock
     private MenuService menuService;
+
+    @Mock
+    private ListViewService listViewService;
 
     @InjectMocks
     private MyListsCallbackHandler handler;
@@ -69,12 +73,26 @@ class MyListsCallbackHandlerTest {
     }
 
     @Test
-    void open_isAStubToast_pointingAtTheUpcomingListView() {
-        final Optional<String> toast =
-                handler.handle(callbackOnMessage(MyListsService.OPEN_PREFIX + UUID.randomUUID()));
+    void open_opensTheListView() {
+        final UUID listId = UUID.randomUUID();
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+        when(listViewService.open(user, MESSAGE_ID, listId)).thenReturn(Optional.of("Groceries"));
 
-        assertThat(toast).get().asString().contains("TK-183");
+        final Optional<String> toast = handler.handle(callbackOnMessage(MyListsService.OPEN_PREFIX + listId));
+
+        assertThat(toast).get().asString().contains("Groceries");
+        verify(listViewService).open(user, MESSAGE_ID, listId);
         verifyNoInteractions(myListsService, menuService);
+    }
+
+    @Test
+    void open_reportsListGone_whenTheListNoLongerExists() {
+        final UUID listId = UUID.randomUUID();
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+        when(listViewService.open(user, MESSAGE_ID, listId)).thenReturn(Optional.empty());
+
+        assertThat(handler.handle(callbackOnMessage(MyListsService.OPEN_PREFIX + listId)))
+                .get().asString().contains("no longer available");
     }
 
     @Test
