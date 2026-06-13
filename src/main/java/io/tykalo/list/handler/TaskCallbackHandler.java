@@ -1,10 +1,6 @@
 package io.tykalo.list.handler;
 
-import io.tykalo.list.ListMessageService;
-import io.tykalo.list.ListService;
-import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
-import io.tykalo.list.TaskService.TaskToggle;
 import io.tykalo.telegram.CallbackHandler;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,13 +9,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
-import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
 
 /**
  * Handles the inline ✅/↩️ buttons on a list's live message. {@code task:done:{id}} marks the task
- * DONE; {@code task:undo:{id}} reverts it to TODO. After a real change the list message is refreshed
- * in place (via {@link ListMessageService} — the Telegram Edit Message API), so the whole toggle
- * happens inside the one message with no extra chatter.
+ * DONE; {@code task:undo:{id}} reverts it to TODO. The live message is refreshed in place afterwards,
+ * but that is not this handler's job: the mutation fires a {@code ListChangedEvent} and
+ * {@code ListMessageService} edits every live message for the list, so the whole toggle happens inside
+ * the one message with no extra chatter.
  *
  * <p>Both toggles are idempotent: a replayed or double-tapped callback that finds the task already in
  * the target state is a no-op (no second state change, no redundant edit) but still answers with a
@@ -34,8 +30,6 @@ public class TaskCallbackHandler implements CallbackHandler {
     private static final String UNDO_PREFIX = "task:undo:";
 
     private final TaskService taskService;
-    private final ListMessageService listMessageService;
-    private final ListService listService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
@@ -58,29 +52,12 @@ public class TaskCallbackHandler implements CallbackHandler {
             log.warn("Ignoring callback with unparseable task id: {}", callback.getData());
             return Optional.of("Unknown task");
         }
-        final TaskToggle result = done ? taskService.markDone(taskId) : taskService.reopen(taskId);
-        if (result.changed()) {
-            refreshList(result.task().getListId(), chatIdOf(callback));
+        if (done) {
+            taskService.markDone(taskId);
+        } else {
+            taskService.reopen(taskId);
         }
         return Optional.of(done ? "Done!" : "Reopened");
-    }
-
-    private void refreshList(final UUID listId, final @Nullable Long chatId) {
-        if (chatId == null) {
-            log.warn("No chat id on callback for list {} — cannot refresh the live message", listId);
-            return;
-        }
-        final Optional<TaskList> list = listService.getById(listId);
-        if (list.isEmpty()) {
-            log.warn("List {} not found while refreshing its live message", listId);
-            return;
-        }
-        listMessageService.publish(list.get(), chatId);
-    }
-
-    private @Nullable Long chatIdOf(final CallbackQuery callback) {
-        final MaybeInaccessibleMessage message = callback.getMessage();
-        return message == null ? null : message.getChatId();
     }
 
     private @Nullable UUID parseId(final String rawId) {

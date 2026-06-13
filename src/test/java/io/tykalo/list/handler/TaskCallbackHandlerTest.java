@@ -1,15 +1,10 @@
 package io.tykalo.list.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import io.tykalo.list.ListMessageService;
-import io.tykalo.list.ListService;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
@@ -36,19 +31,13 @@ class TaskCallbackHandlerTest {
     @Mock
     private TaskService taskService;
 
-    @Mock
-    private ListMessageService listMessageService;
-
-    @Mock
-    private ListService listService;
-
     private TaskCallbackHandler handler;
 
     private TaskList list;
 
     @BeforeEach
     void setUp() {
-        handler = new TaskCallbackHandler(taskService, listMessageService, listService);
+        handler = new TaskCallbackHandler(taskService);
         final User owner = User.create(1L, "owner", ZoneId.of("Europe/Kyiv"), "uk");
         owner.setId(UUID.randomUUID());
         list = TaskList.checklist(owner, "Groceries");
@@ -56,40 +45,26 @@ class TaskCallbackHandlerTest {
     }
 
     @Test
-    void markDone_togglesTask_refreshesList_andReturnsDoneToast() {
+    void markDone_togglesTask_andReturnsDoneToast() {
         final UUID taskId = UUID.randomUUID();
         when(taskService.markDone(taskId)).thenReturn(new TaskToggle(taskInList(taskId), true));
-        when(listService.getById(list.getId())).thenReturn(Optional.of(list));
 
         final Optional<String> toast = handler.handle(callback("task:done:" + taskId));
 
+        // The live message re-renders off the ListChangedEvent that markDone fires, not from here.
         assertThat(toast).contains("Done!");
-        verify(listMessageService).publish(list, CHAT_ID);
+        verify(taskService).markDone(taskId);
     }
 
     @Test
-    void undo_reopensTask_refreshesList_andReturnsReopenedToast() {
+    void undo_reopensTask_andReturnsReopenedToast() {
         final UUID taskId = UUID.randomUUID();
         when(taskService.reopen(taskId)).thenReturn(new TaskToggle(taskInList(taskId), true));
-        when(listService.getById(list.getId())).thenReturn(Optional.of(list));
 
         final Optional<String> toast = handler.handle(callback("task:undo:" + taskId));
 
         assertThat(toast).contains("Reopened");
-        verify(listMessageService).publish(list, CHAT_ID);
-    }
-
-    @Test
-    void repeatedDoneClick_isIdempotent_andDoesNotRefreshAgain() {
-        final UUID taskId = UUID.randomUUID();
-        when(taskService.markDone(taskId)).thenReturn(new TaskToggle(taskInList(taskId), false));
-
-        final Optional<String> toast = handler.handle(callback("task:done:" + taskId));
-
-        // Still answers the spinner with a toast, but the unchanged list is not re-published.
-        assertThat(toast).contains("Done!");
-        verify(listMessageService, never()).publish(any(), anyLong());
-        verifyNoInteractions(listService);
+        verify(taskService).reopen(taskId);
     }
 
     @Test
@@ -97,7 +72,7 @@ class TaskCallbackHandlerTest {
         final Optional<String> toast = handler.handle(callback("task:done:not-a-uuid"));
 
         assertThat(toast).contains("Unknown task");
-        verifyNoInteractions(taskService, listMessageService, listService);
+        verifyNoInteractions(taskService);
     }
 
     @Test
@@ -105,7 +80,7 @@ class TaskCallbackHandlerTest {
         final Optional<String> toast = handler.handle(callback("noise:42"));
 
         assertThat(toast).isEmpty();
-        verifyNoInteractions(taskService, listMessageService, listService);
+        verifyNoInteractions(taskService);
     }
 
     @Test
@@ -113,7 +88,7 @@ class TaskCallbackHandlerTest {
         final Optional<String> toast = handler.handle(callback(null));
 
         assertThat(toast).isEmpty();
-        verifyNoInteractions(taskService, listMessageService, listService);
+        verifyNoInteractions(taskService);
     }
 
     private Task taskInList(final UUID taskId) {

@@ -78,7 +78,7 @@ class BulkAddHandlerTest {
         final ArgumentCaptor<List<String>> titles = ArgumentCaptor.captor();
         verify(taskService).createTasks(eq(groceries.getId()), titles.capture());
         assertThat(titles.getValue()).containsExactly("milk", "bread", "eggs");
-        verify(listMessageService).publish(groceries, 1L);
+        verify(listMessageService).publishIfAbsent(groceries, 1L);
         assertThat(reply).isEmpty();
     }
 
@@ -93,7 +93,7 @@ class BulkAddHandlerTest {
         final ArgumentCaptor<List<String>> titles = ArgumentCaptor.captor();
         verify(taskService).createTasks(eq(inbox.getId()), titles.capture());
         assertThat(titles.getValue()).containsExactly("milk", "bread");
-        verify(listMessageService).publish(inbox, 1L);
+        verify(listMessageService).publishIfAbsent(inbox, 1L);
         assertThat(reply).isEmpty();
     }
 

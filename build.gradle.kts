@@ -49,6 +49,7 @@ dependencies {
     testImplementation(platform(libs.testcontainers.bom))
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.wiremock.standalone)
 }
 
 tasks.withType<JavaCompile>().configureEach {

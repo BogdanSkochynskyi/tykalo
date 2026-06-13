@@ -63,6 +63,7 @@ public class TaskService {
         log.info("Created task id={} list={} owner={} dueAt={} recurrence={}",
                 saved.getId(), list.getId(), saved.getOwnerId(), dueAt, recurrenceRule);
         eventPublisher.publishEvent(new TaskCreatedEvent(saved, list.getType()));
+        announceChange(listId);
         return saved;
     }
 
@@ -81,6 +82,9 @@ public class TaskService {
                 .toList();
         created.forEach(task -> eventPublisher.publishEvent(new TaskCreatedEvent(task, list.getType())));
         log.info("Bulk-created {} tasks in list={} owner={}", created.size(), list.getId(), list.getOwnerId());
+        if (!created.isEmpty()) {
+            announceChange(listId);
+        }
         return created;
     }
 
@@ -93,6 +97,7 @@ public class TaskService {
         task.setStatus(TaskStatus.DONE);
         log.info("Completed task id={}", taskId);
         expandRecurrence(task);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -109,6 +114,7 @@ public class TaskService {
             task.setStatus(TaskStatus.DONE);
             log.info("Marked task done id={}", taskId);
             expandRecurrence(task);
+            announceChange(task.getListId());
         }
         return new TaskToggle(task, changed);
     }
@@ -121,6 +127,7 @@ public class TaskService {
         if (changed) {
             task.setStatus(TaskStatus.TODO);
             log.info("Reopened task id={}", taskId);
+            announceChange(task.getListId());
         }
         return new TaskToggle(task, changed);
     }
@@ -138,6 +145,7 @@ public class TaskService {
         final Task task = require(taskId);
         task.setTitle(title.strip());
         log.info("Updated title of task id={}", taskId);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -147,6 +155,7 @@ public class TaskService {
         final Task task = require(taskId);
         task.setDescription(description == null || description.isBlank() ? null : description.strip());
         log.info("Updated description of task id={}", taskId);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -156,6 +165,7 @@ public class TaskService {
         final Task task = require(taskId);
         task.setDueAt(dueAt);
         log.info("Updated dueAt of task id={} to {}", taskId, dueAt);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -165,6 +175,7 @@ public class TaskService {
         final Task task = require(taskId);
         task.setPriority(priority);
         log.info("Updated priority of task id={} to {}", taskId, priority);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -193,6 +204,7 @@ public class TaskService {
         }
         task.setDueAt(until);
         log.info("Snoozed task id={} until={}", taskId, until);
+        announceChange(task.getListId());
         return task;
     }
 
@@ -202,6 +214,7 @@ public class TaskService {
         if (task.getArchivedAt() == null) {
             task.setArchivedAt(Instant.now());
             log.info("Soft-deleted task id={}", taskId);
+            announceChange(task.getListId());
         }
     }
 
@@ -280,6 +293,15 @@ public class TaskService {
         final Task next = taskRepository.save(Task.recurringInstance(completed, nextDueAt.get()));
         log.info("Recurring task id={} spawned next instance id={} dueAt={}",
                 completed.getId(), next.getId(), nextDueAt.get());
+    }
+
+    /**
+     * Announces that {@code listId}'s task state changed so the live Telegram message(s) for the list
+     * get re-rendered. Fired from every mutator; the {@code list} package's listener (see
+     * {@link ListMessageService#onListChanged}) handles it after the surrounding transaction commits.
+     */
+    private void announceChange(final UUID listId) {
+        eventPublisher.publishEvent(new ListChangedEvent(listId));
     }
 
     private ZoneId ownerZone(final UUID ownerId) {
