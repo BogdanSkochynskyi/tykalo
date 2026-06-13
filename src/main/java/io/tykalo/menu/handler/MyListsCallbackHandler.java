@@ -1,11 +1,13 @@
 package io.tykalo.menu.handler;
 
+import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.telegram.CallbackHandler;
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -14,10 +16,10 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 
 /**
  * Handles the My Lists screen buttons (TK-182), claiming the {@code lists:} {@code callback_data}
- * prefix: {@code lists:page:{n}} pages the screen, {@code lists:menu} returns to the main menu, and
- * {@code lists:open:{id}} / {@code lists:new} are placeholders until the list view (TK-183) and the
- * create flow (TK-185) land. Paging and back-navigation edit the screen in place, so the clicking user
- * is re-resolved from the chat and the message id taken from the callback. Non-{@code lists:} callbacks
+ * prefix: {@code lists:open:{id}} opens the list view (TK-183), {@code lists:page:{n}} pages the
+ * screen, {@code lists:menu} returns to the main menu, and {@code lists:new} is a placeholder until
+ * the create flow (TK-185) lands. Every action edits the screen in place, so the clicking user is
+ * re-resolved from the chat and the message id taken from the callback. Non-{@code lists:} callbacks
  * are left unclaimed.
  */
 @Component
@@ -29,6 +31,7 @@ public class MyListsCallbackHandler implements CallbackHandler {
     private final UserRepository userRepository;
     private final MyListsService myListsService;
     private final MenuService menuService;
+    private final ListViewService listViewService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
@@ -39,10 +42,7 @@ public class MyListsCallbackHandler implements CallbackHandler {
         if (data.equals(MyListsService.NEW)) {
             return Optional.of("➕ Use /list create <name> [type] for now.");
         }
-        if (data.startsWith(MyListsService.OPEN_PREFIX)) {
-            return Optional.of("📂 The list view is coming soon (TK-183).");
-        }
-        // Paging and back-navigation edit the screen in place, so they need the user and message id.
+        // Every action edits the screen in place, so it needs the user and message id.
         final Long chatId = chatIdOf(callback);
         final Integer messageId = messageIdOf(callback);
         if (chatId == null || messageId == null) {
@@ -51,6 +51,15 @@ public class MyListsCallbackHandler implements CallbackHandler {
         final Optional<User> user = userRepository.findByTgChatId(chatId);
         if (user.isEmpty()) {
             return Optional.of("This button has expired.");
+        }
+        if (data.startsWith(MyListsService.OPEN_PREFIX)) {
+            final UUID listId = parseUuid(data.substring(MyListsService.OPEN_PREFIX.length()));
+            if (listId == null) {
+                return Optional.of("This button has expired.");
+            }
+            return listViewService.open(user.get(), messageId, listId)
+                    .map("📋 "::concat)
+                    .or(() -> Optional.of("That list is no longer available."));
         }
         if (data.equals(MyListsService.BACK)) {
             menuService.editToMainMenu(user.get(), messageId);
@@ -72,6 +81,14 @@ public class MyListsCallbackHandler implements CallbackHandler {
             return Optional.of(Math.max(0, Integer.parseInt(raw)));
         } catch (final NumberFormatException e) {
             return Optional.empty();
+        }
+    }
+
+    private @Nullable UUID parseUuid(final String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (final IllegalArgumentException e) {
+            return null;
         }
     }
 

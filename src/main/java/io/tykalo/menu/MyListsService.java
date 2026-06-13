@@ -138,12 +138,7 @@ public class MyListsService {
     }
 
     private String icon(final ListType type) {
-        return switch (type) {
-            case CHECKLIST -> "🛒";
-            case PROJECT -> "📋";
-            case ROUTINE -> "🔄";
-            case INBOX -> "📥";
-        };
+        return ListIcons.of(type);
     }
 
     private InlineKeyboardButton button(final String text, final String callbackData) {
