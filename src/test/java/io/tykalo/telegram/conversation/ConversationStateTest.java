@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.tykalo.list.ListType;
+import io.tykalo.menu.HelpTopic;
 import io.tykalo.telegram.conversation.ConversationState.AddingItems;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListName;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListType;
+import io.tykalo.telegram.conversation.ConversationState.Help;
+import io.tykalo.telegram.conversation.ConversationState.HelpCategory;
 import io.tykalo.telegram.conversation.ConversationState.Idle;
 import io.tykalo.telegram.conversation.ConversationState.ListSettings;
 import io.tykalo.telegram.conversation.ConversationState.ListView;
@@ -33,7 +36,9 @@ class ConversationStateTest {
                 new CreatingListType(),
                 new CreatingListName(ListType.PROJECT, 7),
                 new ListSettings(listId),
-                new RenamingList(listId));
+                new RenamingList(listId),
+                new Help(),
+                new HelpCategory(HelpTopic.NUDGERS));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -77,5 +82,7 @@ class ConversationStateTest {
         assertThat(new ListView(listId).expectsTextInput()).isFalse();
         assertThat(new CreatingListType().expectsTextInput()).isFalse();
         assertThat(new ListSettings(listId).expectsTextInput()).isFalse();
+        assertThat(new Help().expectsTextInput()).isFalse();
+        assertThat(new HelpCategory(HelpTopic.LISTS).expectsTextInput()).isFalse();
     }
 }

@@ -3,6 +3,7 @@ package io.tykalo.telegram.conversation;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.tykalo.list.ListType;
+import io.tykalo.menu.HelpTopic;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,8 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.CreatingListName.class, name = "CREATING_LIST_NAME"),
         @JsonSubTypes.Type(value = ConversationState.ListSettings.class, name = "LIST_SETTINGS"),
         @JsonSubTypes.Type(value = ConversationState.RenamingList.class, name = "RENAMING_LIST"),
+        @JsonSubTypes.Type(value = ConversationState.Help.class, name = "HELP"),
+        @JsonSubTypes.Type(value = ConversationState.HelpCategory.class, name = "HELP_CATEGORY"),
 })
 public sealed interface ConversationState {
 
@@ -98,5 +101,13 @@ public sealed interface ConversationState {
         public boolean expectsTextInput() {
             return true;
         }
+    }
+
+    /** The top-level help screen (TK-189) — intro plus category buttons. */
+    record Help() implements ConversationState {
+    }
+
+    /** A help category drilldown (TK-189) — the commands in one {@link HelpTopic} plus a Back button. */
+    record HelpCategory(HelpTopic topic) implements ConversationState {
     }
 }
