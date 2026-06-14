@@ -2,6 +2,7 @@ package io.tykalo.telegram.conversation;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import io.tykalo.list.ListMemberRole;
 import io.tykalo.list.ListType;
 import io.tykalo.menu.HelpTopic;
 import java.util.UUID;
@@ -35,6 +36,7 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.RenamingList.class, name = "RENAMING_LIST"),
         @JsonSubTypes.Type(value = ConversationState.Help.class, name = "HELP"),
         @JsonSubTypes.Type(value = ConversationState.HelpCategory.class, name = "HELP_CATEGORY"),
+        @JsonSubTypes.Type(value = ConversationState.InvitingMember.class, name = "INVITING_MEMBER"),
 })
 public sealed interface ConversationState {
 
@@ -109,5 +111,17 @@ public sealed interface ConversationState {
 
     /** A help category drilldown (TK-189) — the commands in one {@link HelpTopic} plus a Back button. */
     record HelpCategory(HelpTopic topic) implements ConversationState {
+    }
+
+    /**
+     * Inviting members to a shared list (TK-193) — consumes plain-text input (each message is a
+     * {@code @username} to invite as {@code role}). Carries the id of the list-view message that was
+     * edited into the invite prompt, so {@code ❌ Cancel} can restore the list view in place.
+     */
+    record InvitingMember(UUID listId, ListMemberRole role, int messageId) implements ConversationState {
+        @Override
+        public boolean expectsTextInput() {
+            return true;
+        }
     }
 }

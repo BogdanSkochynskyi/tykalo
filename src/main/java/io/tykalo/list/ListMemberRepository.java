@@ -19,6 +19,9 @@ public interface ListMemberRepository extends JpaRepository<ListMember, UUID> {
     /** A user's memberships filtered to a role (e.g. all lists they OWN). */
     List<ListMember> findByUserIdAndRole(UUID userId, ListMemberRole role);
 
+    /** A user's memberships in a given lifecycle status (e.g. all lists where they are ACTIVE). */
+    List<ListMember> findByUserIdAndStatus(UUID userId, ListMemberStatus status);
+
     /** Whether the user is already a member of the list. */
     boolean existsByListIdAndUserId(UUID listId, UUID userId);
 }

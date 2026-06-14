@@ -12,6 +12,7 @@ import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
 import io.tykalo.list.TaskStatus;
 import io.tykalo.menu.AddItemsService;
+import io.tykalo.menu.InviteMemberService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.user.User;
@@ -49,6 +50,9 @@ class ListViewCallbackHandlerTest {
 
     @Mock
     private AddItemsService addItemsService;
+
+    @Mock
+    private InviteMemberService inviteMemberService;
 
     @InjectMocks
     private ListViewCallbackHandler handler;
@@ -162,6 +166,39 @@ class ListViewCallbackHandlerTest {
     void more_isAStub() {
         assertThat(handler.handle(callbackOnMessage(ListViewService.MORE_PREFIX + list.getId())))
                 .get().asString().contains("TK-186");
+    }
+
+    @Test
+    void members_opensTheInviteFlow() {
+        stubUser();
+        when(inviteMemberService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.of("Groceries"));
+
+        final Optional<String> toast =
+                handler.handle(callbackOnMessage(ListViewService.MEMBERS_PREFIX + list.getId()));
+
+        assertThat(toast).get().asString().contains("Inviting to");
+        verify(inviteMemberService).start(user, MESSAGE_ID, list.getId());
+    }
+
+    @Test
+    void members_isRefused_whenUserCannotManage() {
+        stubUser();
+        when(inviteMemberService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.empty());
+
+        assertThat(handler.handle(callbackOnMessage(ListViewService.MEMBERS_PREFIX + list.getId())))
+                .get().asString().contains("Only owners and editors");
+    }
+
+    @Test
+    void cancelInvite_returnsToListView() {
+        stubUser();
+        when(listViewService.show(user, MESSAGE_ID, list.getId(), 0)).thenReturn(Optional.of("Groceries"));
+
+        final Optional<String> toast =
+                handler.handle(callbackOnMessage(InviteMemberService.CANCEL_PREFIX + list.getId()));
+
+        assertThat(toast).get().asString().contains("Done inviting");
+        verify(listViewService).show(user, MESSAGE_ID, list.getId(), 0);
     }
 
     @Test

@@ -3,6 +3,7 @@ package io.tykalo.menu.handler;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskService;
 import io.tykalo.menu.AddItemsService;
+import io.tykalo.menu.InviteMemberService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.telegram.CallbackHandler;
@@ -20,8 +21,9 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
  * Handles the list-view buttons (TK-183), claiming the {@code lv:} {@code callback_data} prefix:
  * {@code lv:done|undo:{task}:{page}} toggles an item and re-renders the same page in place,
  * {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen, {@code lv:add:{list}}
- * starts the add-items flow (TK-184), and {@code lv:members|more:{list}} are placeholders until sharing
- * (Phase 1.5b) and the more menu (TK-186) land. Everything that edits the screen re-resolves the
+ * starts the add-items flow (TK-184), {@code lv:members:{list}} opens the interim invite flow (TK-193)
+ * and {@code lv:invx:{list}} cancels it back to the list view, while {@code lv:more:{list}} is a
+ * placeholder until the more menu (TK-186) lands. Everything that edits the screen re-resolves the
  * clicking user from the chat and takes the message id from the callback. Non-{@code lv:} callbacks
  * are left unclaimed.
  */
@@ -36,15 +38,13 @@ public class ListViewCallbackHandler implements CallbackHandler {
     private final ListViewService listViewService;
     private final MyListsService myListsService;
     private final AddItemsService addItemsService;
+    private final InviteMemberService inviteMemberService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
         final String data = callback.getData();
         if (data == null || !data.startsWith("lv:")) {
             return Optional.empty();
-        }
-        if (data.startsWith(ListViewService.MEMBERS_PREFIX)) {
-            return Optional.of("👥 Sharing is coming soon.");
         }
         if (data.startsWith(ListViewService.MORE_PREFIX)) {
             return Optional.of("⋯ More options are coming soon (TK-186).");
@@ -58,6 +58,12 @@ public class ListViewCallbackHandler implements CallbackHandler {
         final Optional<User> user = userRepository.findByTgChatId(chatId);
         if (user.isEmpty()) {
             return Optional.of(EXPIRED);
+        }
+        if (data.startsWith(ListViewService.MEMBERS_PREFIX)) {
+            return openInvite(data.substring(ListViewService.MEMBERS_PREFIX.length()), user.get(), messageId);
+        }
+        if (data.startsWith(InviteMemberService.CANCEL_PREFIX)) {
+            return cancelInvite(data.substring(InviteMemberService.CANCEL_PREFIX.length()), user.get(), messageId);
         }
         if (data.equals(ListViewService.BACK)) {
             myListsService.navigate(user.get(), messageId, 0);
@@ -82,6 +88,27 @@ public class ListViewCallbackHandler implements CallbackHandler {
             return paginate(data.substring(ListViewService.PAGE_PREFIX.length()), user.get(), messageId);
         }
         return Optional.empty();
+    }
+
+    private Optional<String> openInvite(final String rawListId, final User user, final int messageId) {
+        final UUID listId = parseUuid(rawListId);
+        if (listId == null) {
+            return Optional.of(EXPIRED);
+        }
+        return inviteMemberService.start(user, messageId, listId)
+                .map("👥 Inviting to "::concat)
+                .or(() -> Optional.of("Only owners and editors can invite members."));
+    }
+
+    private Optional<String> cancelInvite(final String rawListId, final User user, final int messageId) {
+        final UUID listId = parseUuid(rawListId);
+        if (listId == null) {
+            return Optional.of(EXPIRED);
+        }
+        // show() restores the list view and resets the conversation state to ListView.
+        return listViewService.show(user, messageId, listId, 0).isPresent()
+                ? Optional.of("Done inviting")
+                : Optional.of("That list is no longer available.");
     }
 
     private Optional<String> toggle(final String rest, final User user, final int messageId, final boolean done) {
