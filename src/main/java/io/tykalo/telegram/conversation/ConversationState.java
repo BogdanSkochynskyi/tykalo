@@ -92,8 +92,12 @@ public sealed interface ConversationState {
     record ListSettings(UUID listId) implements ConversationState {
     }
 
-    /** Renaming an existing list (TK-186) — consumes plain-text input. */
-    record RenamingList(UUID listId) implements ConversationState {
+    /**
+     * Renaming an existing list (TK-186) — consumes plain-text input. Carries the id of the prompt
+     * message ("Send the new name…") so the typed name can re-render it in place — as a validation
+     * notice on a blank/duplicate name, or as the refreshed settings screen on success.
+     */
+    record RenamingList(UUID listId, int promptMessageId) implements ConversationState {
         @Override
         public boolean expectsTextInput() {
             return true;

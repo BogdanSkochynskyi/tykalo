@@ -162,4 +162,49 @@ class ListServiceTest {
         assertThatThrownBy(() -> listService.deleteList(id))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void rename_updatesName_andStrips() {
+        final UUID id = UUID.randomUUID();
+        final TaskList list = TaskList.checklist(owner(), "Old");
+        when(listRepository.findById(id)).thenReturn(Optional.of(list));
+
+        final TaskList result = listService.rename(id, "  New name  ");
+
+        assertThat(result.getName()).isEqualTo("New name");
+    }
+
+    @Test
+    void rename_rejectsBlankName() {
+        assertThatThrownBy(() -> listService.rename(UUID.randomUUID(), "  "))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(listRepository, never()).findById(any());
+    }
+
+    @Test
+    void changeType_updatesTypeAndDefaultNudgerPolicy() {
+        final UUID id = UUID.randomUUID();
+        final TaskList list = TaskList.checklist(owner(), "List");
+        when(listRepository.findById(id)).thenReturn(Optional.of(list));
+
+        final TaskList result = listService.changeType(id, ListType.PROJECT);
+
+        assertThat(result.getType()).isEqualTo(ListType.PROJECT);
+        assertThat(result.getNudgerDefaultPolicy()).isEqualTo(NudgerDefaultPolicy.ON_PER_TASK);
+    }
+
+    @Test
+    void changeType_rejectsInbox() {
+        assertThatThrownBy(() -> listService.changeType(UUID.randomUUID(), ListType.INBOX))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(listRepository, never()).findById(any());
+    }
+
+    @Test
+    void changeType_throws_whenListMissing() {
+        final UUID id = UUID.randomUUID();
+        when(listRepository.findById(id)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> listService.changeType(id, ListType.ROUTINE))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

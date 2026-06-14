@@ -3,6 +3,7 @@ package io.tykalo.menu.handler;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskService;
 import io.tykalo.menu.AddItemsService;
+import io.tykalo.menu.ListSettingsService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.telegram.CallbackHandler;
@@ -20,8 +21,8 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
  * Handles the list-view buttons (TK-183), claiming the {@code lv:} {@code callback_data} prefix:
  * {@code lv:done|undo:{task}:{page}} toggles an item and re-renders the same page in place,
  * {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen, {@code lv:add:{list}}
- * starts the add-items flow (TK-184), and {@code lv:members|more:{list}} are placeholders until sharing
- * (Phase 1.5b) and the more menu (TK-186) land. Everything that edits the screen re-resolves the
+ * starts the add-items flow (TK-184), {@code lv:more:{list}} opens the list-settings submenu (TK-186),
+ * and {@code lv:members:{list}} is a placeholder until sharing (Phase 1.5b). Everything that edits the screen re-resolves the
  * clicking user from the chat and takes the message id from the callback. Non-{@code lv:} callbacks
  * are left unclaimed.
  */
@@ -36,6 +37,7 @@ public class ListViewCallbackHandler implements CallbackHandler {
     private final ListViewService listViewService;
     private final MyListsService myListsService;
     private final AddItemsService addItemsService;
+    private final ListSettingsService settingsService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
@@ -46,9 +48,6 @@ public class ListViewCallbackHandler implements CallbackHandler {
         if (data.startsWith(ListViewService.MEMBERS_PREFIX)) {
             return Optional.of("👥 Sharing is coming soon.");
         }
-        if (data.startsWith(ListViewService.MORE_PREFIX)) {
-            return Optional.of("⋯ More options are coming soon (TK-186).");
-        }
         // The remaining actions edit the screen in place, so they need the user and message id.
         final Long chatId = chatIdOf(callback);
         final Integer messageId = messageIdOf(callback);
@@ -58,6 +57,15 @@ public class ListViewCallbackHandler implements CallbackHandler {
         final Optional<User> user = userRepository.findByTgChatId(chatId);
         if (user.isEmpty()) {
             return Optional.of(EXPIRED);
+        }
+        if (data.startsWith(ListViewService.MORE_PREFIX)) {
+            final UUID listId = parseUuid(data.substring(ListViewService.MORE_PREFIX.length()));
+            if (listId == null) {
+                return Optional.of(EXPIRED);
+            }
+            return settingsService.open(user.get(), messageId, listId)
+                    .map("⚙️ "::concat)
+                    .or(() -> Optional.of("That list is no longer available."));
         }
         if (data.equals(ListViewService.BACK)) {
             myListsService.navigate(user.get(), messageId, 0);
