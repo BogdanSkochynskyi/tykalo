@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.tykalo.menu.CreateListService;
+import io.tykalo.menu.HelpService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.user.User;
@@ -37,18 +38,20 @@ class MenuCallbackHandlerTest {
     @Mock
     private CreateListService createListService;
 
+    @Mock
+    private HelpService helpService;
+
     @InjectMocks
     private MenuCallbackHandler handler;
 
     @Test
     void placeholderButtons_areClaimedWithAToast() {
-        final List<String> stubButtons = List.of(MenuService.SHARED,
-                MenuService.STATS, MenuService.SETTINGS, MenuService.HELP);
+        final List<String> stubButtons = List.of(MenuService.SHARED, MenuService.STATS, MenuService.SETTINGS);
 
         for (final String action : stubButtons) {
             assertThat(handler.handle(callback(action))).as("toast for %s", action).isPresent();
         }
-        verifyNoInteractions(myListsService, createListService);
+        verifyNoInteractions(myListsService, createListService, helpService);
     }
 
     @Test
@@ -70,8 +73,14 @@ class MenuCallbackHandlerTest {
     }
 
     @Test
-    void helpButton_pointsToTheHelpCommand() {
-        assertThat(handler.handle(callback(MenuService.HELP))).get().asString().contains("/help");
+    void helpButton_opensTheHelpScreenInPlace() {
+        final User user = User.create(CHAT_ID, "tester", ZoneId.of("Europe/Kyiv"), "en");
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+
+        final Optional<String> toast = handler.handle(callbackOnMessage(MenuService.HELP));
+
+        assertThat(toast).get().asString().contains("Help");
+        verify(helpService).navigate(user, MESSAGE_ID);
     }
 
     @Test

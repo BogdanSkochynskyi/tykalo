@@ -1,50 +1,45 @@
 package io.tykalo.user.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.tykalo.menu.HelpService;
 import io.tykalo.telegram.TelegramUpdateFixtures;
+import io.tykalo.user.User;
+import io.tykalo.user.UserService;
+import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
+@ExtendWith(MockitoExtension.class)
 class HelpCommandHandlerTest {
 
-    private final HelpCommandHandler handler = new HelpCommandHandler();
+    @Mock
+    private UserService userService;
+
+    @Mock
+    private HelpService helpService;
+
+    @InjectMocks
+    private HelpCommandHandler handler;
 
     @Test
-    void help_groupsEveryCommandCategory() {
+    void help_opensTheHelpScreen_andStaysSilent() {
         // Arrange
         final Update update = TelegramUpdateFixtures.command("/help", 42L, "bob", "uk");
+        final User user = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        when(userService.findOrCreate(update)).thenReturn(user);
 
         // Act
         final String reply = handler.help(update);
 
-        // Assert
-        assertThat(reply)
-                .contains("Lists")
-                .contains("Tasks")
-                .contains("Nudgers")
-                .contains("Scheduling")
-                .contains("Settings");
-    }
-
-    @Test
-    void help_listsRepresentativeCommandsWithExamples() {
-        // Arrange
-        final Update update = TelegramUpdateFixtures.command("/help", 42L, "bob", "uk");
-
-        // Act
-        final String reply = handler.help(update);
-
-        // Assert
-        assertThat(reply)
-                .contains("/add")
-                .contains("/lists")
-                .contains("/done")
-                .contains("/nudgers add @username")
-                .contains("/task")
-                .contains("/morning")
-                .contains("/tz")
-                .contains("/quiet")
-                .contains("e.g.");
+        // Assert — the screen is sent via the gateway, so the command itself returns nothing
+        assertThat(reply).isNull();
+        verify(helpService).open(user);
     }
 }
