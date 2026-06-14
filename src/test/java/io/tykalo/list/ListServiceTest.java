@@ -214,7 +214,7 @@ class ListServiceTest {
         final TaskList sharedArchived = listWithId("OldShared");
         sharedArchived.setArchivedAt(Instant.now());
         when(listRepository.findByOwnerIdAndArchivedAtIsNull(userId)).thenReturn(List.of(owned));
-        when(listMemberRepository.findByUserId(userId)).thenReturn(List.of(
+        when(listMemberRepository.findByUserIdAndStatus(userId, ListMemberStatus.ACTIVE)).thenReturn(List.of(
                 ListMember.of(sharedActive.getId(), userId, ListMemberRole.MEMBER),
                 ListMember.of(sharedArchived.getId(), userId, ListMemberRole.EDITOR)));
         when(listRepository.findAllById(List.of(sharedActive.getId(), sharedArchived.getId())))
@@ -233,7 +233,7 @@ class ListServiceTest {
         final UUID userId = UUID.randomUUID();
         final TaskList owned = listWithId("Owned");
         when(listRepository.findByOwnerIdAndArchivedAtIsNull(userId)).thenReturn(List.of(owned));
-        when(listMemberRepository.findByUserId(userId))
+        when(listMemberRepository.findByUserIdAndStatus(userId, ListMemberStatus.ACTIVE))
                 .thenReturn(List.of(ListMember.owner(owned.getId(), userId)));
         when(listRepository.findAllById(List.of(owned.getId()))).thenReturn(List.of(owned));
 

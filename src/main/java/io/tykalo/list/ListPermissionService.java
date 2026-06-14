@@ -96,14 +96,23 @@ public class ListPermissionService {
         require(canDeleteList(userId, listId), userId, listId, "delete list");
     }
 
+    /** Asserts {@link #canManageMembers}; throws {@link ListPermissionDeniedException} otherwise. */
+    @Transactional(readOnly = true)
+    public void requireCanManageMembers(final UUID userId, final UUID listId) {
+        require(canManageMembers(userId, listId), userId, listId, "manage members");
+    }
+
     /**
-     * The user's effective role on the list: an explicit {@link ListMember} row if present, else
-     * {@link ListMemberRole#OWNER} when they are the list's {@code owner_id} (legacy authority for
-     * pre-backfill private lists), else empty.
+     * The user's effective role on the list: an explicit {@link ListMemberStatus#ACTIVE}
+     * {@link ListMember} row if present, else {@link ListMemberRole#OWNER} when they are the list's
+     * {@code owner_id} (legacy authority for pre-backfill private lists), else empty. A
+     * {@link ListMemberStatus#PENDING} invite grants nothing — the invitee has no access until they
+     * accept (TK-193).
      */
     @Transactional(readOnly = true)
     public Optional<ListMemberRole> resolveRole(final UUID userId, final UUID listId) {
-        final Optional<ListMember> member = listMemberRepository.findByListIdAndUserId(listId, userId);
+        final Optional<ListMember> member = listMemberRepository.findByListIdAndUserId(listId, userId)
+                .filter(m -> m.getStatus() == ListMemberStatus.ACTIVE);
         if (member.isPresent()) {
             return member.map(ListMember::getRole);
         }

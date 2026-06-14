@@ -1,5 +1,9 @@
 package io.tykalo.user.handler;
 
+import io.tykalo.list.DeepLinkInviteResult;
+import io.tykalo.list.ListInvite;
+import io.tykalo.list.ListInvitePromptService;
+import io.tykalo.list.ListInviteService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
@@ -26,9 +30,10 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
  *
  * <p>A genuine first {@code /start} with no invite kicks off the 3-step onboarding (TK-172): the
  * {@link OnboardingService} owns the messages from there, so this handler stays silent. Invited
- * users skip onboarding — their greeting + consent prompt take over instead. A returning user gets
- * the main menu (TK-181) via {@link MenuService} rather than a text-only welcome, so the handler is
- * again silent on that path.
+ * users skip onboarding — their greeting + consent prompt take over instead; this covers both a Nudger
+ * invite ({@code nudge_invite_…}) and a shared-list invite ({@code list_invite_…}, TK-193), each
+ * carrying its own deep-link payload. A returning user gets the main menu (TK-181) via
+ * {@link MenuService} rather than a text-only welcome, so the handler is again silent on that path.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,6 +42,8 @@ public class StartCommandHandler {
     private final UserService userService;
     private final NudgerService nudgerService;
     private final NudgerPromptService promptService;
+    private final ListInviteService listInviteService;
+    private final ListInvitePromptService listInvitePromptService;
     private final OnboardingService onboardingService;
     private final MenuService menuService;
 
@@ -44,9 +51,14 @@ public class StartCommandHandler {
     public @Nullable String start(final Update update) {
         final Registration registration = userService.register(update);
         final User user = registration.user();
-        final String inviteNote = inviteNote(update, user);
-        if (!inviteNote.isEmpty()) {
-            return greeting(user) + inviteNote;
+        final String payload = startPayload(update);
+        final Optional<String> listNote = listInviteNote(payload, user);
+        if (listNote.isPresent()) {
+            return greeting(user) + listNote.get();
+        }
+        final String nudgeNote = nudgeInviteNote(payload, user);
+        if (!nudgeNote.isEmpty()) {
+            return greeting(user) + nudgeNote;
         }
         if (registration.created()) {
             onboardingService.begin(user);
@@ -56,8 +68,38 @@ public class StartCommandHandler {
         return null;
     }
 
-    private String inviteNote(final Update update, final User invitee) {
-        final Optional<UUID> ownerId = NudgeInvite.parse(startPayload(update));
+    private Optional<String> listInviteNote(final String payload, final User invitee) {
+        final Optional<ListInvite.Payload> parsed = ListInvite.parse(payload);
+        if (parsed.isEmpty()) {
+            return Optional.empty();
+        }
+        final DeepLinkInviteResult result = listInviteService.acceptViaDeepLink(invitee, parsed.get());
+        return switch (result) {
+            case DeepLinkInviteResult.Invited invited -> {
+                listInvitePromptService.sendInvitePrompt(invited.member(), invitee, invited.inviter(), invited.list());
+                yield Optional.of(listInvitedNote(invited.inviter(), invited.list().getName()));
+            }
+            case DeepLinkInviteResult.AlreadyPending pending -> {
+                listInvitePromptService.sendInvitePrompt(pending.member(), invitee, pending.inviter(), pending.list());
+                yield Optional.of(listInvitedNote(pending.inviter(), pending.list().getName()));
+            }
+            case DeepLinkInviteResult.AlreadyMember member ->
+                    Optional.of("\n\nYou're already a member of \"%s\".".formatted(member.list().getName()));
+            case DeepLinkInviteResult.Expired ignored ->
+                    Optional.of("\n\n⚠️ This invite link has expired — ask for a fresh one.");
+            case DeepLinkInviteResult.SelfInvite ignored -> Optional.empty();
+            case DeepLinkInviteResult.Unavailable ignored -> Optional.empty();
+        };
+    }
+
+    private String listInvitedNote(final User inviter, final String listName) {
+        final String name = inviter.getTgUsername() == null ? "Someone" : "@" + inviter.getTgUsername();
+        return "\n\n🔔 %s invited you to join the list \"%s\" — please accept or decline below."
+                .formatted(name, listName);
+    }
+
+    private String nudgeInviteNote(final String payload, final User invitee) {
+        final Optional<UUID> ownerId = NudgeInvite.parse(payload);
         if (ownerId.isEmpty()) {
             return "";
         }
