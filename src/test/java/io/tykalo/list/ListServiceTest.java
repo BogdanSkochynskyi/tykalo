@@ -3,6 +3,7 @@ package io.tykalo.list;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +26,12 @@ class ListServiceTest {
 
     @Mock
     private ListRepository listRepository;
+
+    @Mock
+    private ListMemberRepository listMemberRepository;
+
+    @Mock
+    private ListPermissionService permissionService;
 
     @InjectMocks
     private ListService listService;
@@ -161,5 +168,79 @@ class ListServiceTest {
         when(listRepository.findById(id)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> listService.deleteList(id))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private TaskList listWithId(final String name) {
+        final TaskList list = TaskList.checklist(owner(), name);
+        list.setId(UUID.randomUUID());
+        return list;
+    }
+
+    @Test
+    void deleteList_actorAware_checksPermissionThenSoftDeletes() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Shared");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        // Act
+        listService.deleteList(actor, list.getId());
+
+        // Assert
+        verify(permissionService).requireCanDeleteList(actor, list.getId());
+        assertThat(list.getArchivedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteList_actorAware_throws_andDoesNotTouchList_whenPermissionDenied() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID listId = UUID.randomUUID();
+        doThrow(new ListPermissionDeniedException(actor, listId, "delete list", ListMemberRole.MEMBER))
+                .when(permissionService).requireCanDeleteList(actor, listId);
+
+        // Act + Assert
+        assertThatThrownBy(() -> listService.deleteList(actor, listId))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        verify(listRepository, never()).findById(any());
+    }
+
+    @Test
+    void findAllAccessibleLists_unionsOwnedAndMemberLists_excludingArchivedMemberLists() {
+        // Arrange
+        final UUID userId = UUID.randomUUID();
+        final TaskList owned = listWithId("Owned");
+        final TaskList sharedActive = listWithId("Shared");
+        final TaskList sharedArchived = listWithId("OldShared");
+        sharedArchived.setArchivedAt(Instant.now());
+        when(listRepository.findByOwnerIdAndArchivedAtIsNull(userId)).thenReturn(List.of(owned));
+        when(listMemberRepository.findByUserId(userId)).thenReturn(List.of(
+                ListMember.of(sharedActive.getId(), userId, ListMemberRole.MEMBER),
+                ListMember.of(sharedArchived.getId(), userId, ListMemberRole.EDITOR)));
+        when(listRepository.findAllById(List.of(sharedActive.getId(), sharedArchived.getId())))
+                .thenReturn(List.of(sharedActive, sharedArchived));
+
+        // Act
+        final List<TaskList> result = listService.findAllAccessibleLists(userId);
+
+        // Assert
+        assertThat(result).containsExactly(owned, sharedActive);
+    }
+
+    @Test
+    void findAllAccessibleLists_dedupesListWhereUserIsBothOwnerAndMember() {
+        // Arrange
+        final UUID userId = UUID.randomUUID();
+        final TaskList owned = listWithId("Owned");
+        when(listRepository.findByOwnerIdAndArchivedAtIsNull(userId)).thenReturn(List.of(owned));
+        when(listMemberRepository.findByUserId(userId))
+                .thenReturn(List.of(ListMember.owner(owned.getId(), userId)));
+        when(listRepository.findAllById(List.of(owned.getId()))).thenReturn(List.of(owned));
+
+        // Act
+        final List<TaskList> result = listService.findAllAccessibleLists(userId);
+
+        // Assert
+        assertThat(result).containsExactly(owned);
     }
 }

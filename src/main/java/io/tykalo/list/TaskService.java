@@ -31,6 +31,42 @@ public class TaskService {
     private final UserRepository userRepository;
     private final RecurrenceCalculator recurrenceCalculator;
     private final ApplicationEventPublisher eventPublisher;
+    private final ListPermissionService permissionService;
+
+    /**
+     * Adds an item on behalf of {@code actorId}, enforcing the add-items permission at the boundary
+     * (TK-192) before delegating to {@link #createTask(UUID, String)}. Throws
+     * {@link ListPermissionDeniedException} if the actor may not add to the list.
+     */
+    @Transactional
+    public Task createTask(final UUID actorId, final UUID listId, final String title) {
+        permissionService.requireCanAddItems(actorId, listId);
+        return createTask(listId, title);
+    }
+
+    /** Permission-checked bulk add on behalf of {@code actorId}; see {@link #createTask(UUID, UUID, String)}. */
+    @Transactional
+    public List<Task> createTasks(final UUID actorId, final UUID listId, final List<String> titles) {
+        permissionService.requireCanAddItems(actorId, listId);
+        return createTasks(listId, titles);
+    }
+
+    /**
+     * Toggles an item done on behalf of {@code actorId}, enforcing the toggle permission at the
+     * boundary (TK-192) before delegating to {@link #markDone(UUID)}.
+     */
+    @Transactional
+    public TaskToggle markDone(final UUID actorId, final UUID taskId) {
+        permissionService.requireCanToggleItems(actorId, require(taskId).getListId());
+        return markDone(taskId);
+    }
+
+    /** Permission-checked reopen on behalf of {@code actorId}; see {@link #markDone(UUID, UUID)}. */
+    @Transactional
+    public TaskToggle reopen(final UUID actorId, final UUID taskId) {
+        permissionService.requireCanToggleItems(actorId, require(taskId).getListId());
+        return reopen(taskId);
+    }
 
     @Transactional
     public Task createTask(final UUID listId, final String title) {

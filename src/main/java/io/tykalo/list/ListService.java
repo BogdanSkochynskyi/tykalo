@@ -3,6 +3,7 @@ package io.tykalo.list;
 import io.tykalo.user.User;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ListService {
 
     private final ListRepository listRepository;
+    private final ListMemberRepository listMemberRepository;
+    private final ListPermissionService permissionService;
 
     @Transactional
     public TaskList createList(final User owner, final String name, final ListType type) {
@@ -67,6 +70,26 @@ public class ListService {
     }
 
     /**
+     * Every active list the user can access: their own lists unioned with lists they hold a
+     * {@link ListMember} row on (shared lists, TK-191). Deduped by id with owned lists first, so a
+     * list where the user is both {@code owner_id} and has an explicit OWNER row appears once.
+     * Archived lists are excluded on both sides.
+     */
+    @Transactional(readOnly = true)
+    public List<TaskList> findAllAccessibleLists(final UUID userId) {
+        final LinkedHashMap<UUID, TaskList> byId = new LinkedHashMap<>();
+        listRepository.findByOwnerIdAndArchivedAtIsNull(userId)
+                .forEach(list -> byId.put(list.getId(), list));
+        final List<UUID> memberListIds = listMemberRepository.findByUserId(userId).stream()
+                .map(ListMember::getListId)
+                .toList();
+        listRepository.findAllById(memberListIds).stream()
+                .filter(list -> list.getArchivedAt() == null)
+                .forEach(list -> byId.putIfAbsent(list.getId(), list));
+        return List.copyOf(byId.values());
+    }
+
+    /**
      * Resolves the given list ids to their names in one batch query (no N+1), keyed by id.
      * Ids with no matching row are simply absent from the map; archived lists are included so a
      * task still renders under its (now archived) list name in views.
@@ -90,6 +113,17 @@ public class ListService {
         return listRepository.findByOwnerIdAndArchivedAtIsNull(ownerId).stream()
                 .filter(list -> list.getName().equalsIgnoreCase(target))
                 .findFirst();
+    }
+
+    /**
+     * Deletes a list on behalf of {@code actorId}, enforcing the OWNER-only permission at the
+     * boundary (TK-192) before delegating to {@link #deleteList(UUID)}. Throws
+     * {@link ListPermissionDeniedException} if the actor may not delete the list.
+     */
+    @Transactional
+    public void deleteList(final UUID actorId, final UUID listId) {
+        permissionService.requireCanDeleteList(actorId, listId);
+        deleteList(listId);
     }
 
     @Transactional
