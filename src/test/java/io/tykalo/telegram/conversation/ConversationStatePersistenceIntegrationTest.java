@@ -43,7 +43,7 @@ class ConversationStatePersistenceIntegrationTest extends AbstractIntegrationTes
 
     @Test
     void setState_appliesA24hTtl() {
-        service.setState(userId, new CreatingListName(ListType.PROJECT));
+        service.setState(userId, new CreatingListName(ListType.PROJECT, 5));
 
         final Long ttlSeconds = redis.getExpire(key(), TimeUnit.SECONDS);
         assertThat(ttlSeconds).isNotNull();
