@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +43,9 @@ class TaskServiceTest {
 
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private ListPermissionService permissionService;
 
     @InjectMocks
     private TaskService taskService;
@@ -684,5 +688,68 @@ class TaskServiceTest {
 
         // Assert
         assertThat(result).containsExactly(overdue);
+    }
+
+    @Test
+    void createTask_actorAware_checksAddPermissionThenDelegates() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        final Task result = taskService.createTask(actor, list.getId(), "Buy milk");
+
+        // Assert
+        verify(permissionService).requireCanAddItems(actor, list.getId());
+        assertThat(result.getTitle()).isEqualTo("Buy milk");
+    }
+
+    @Test
+    void createTask_actorAware_throws_andDoesNotSave_whenPermissionDenied() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID listId = UUID.randomUUID();
+        doThrow(new ListPermissionDeniedException(actor, listId, "add items", ListMemberRole.MEMBER))
+                .when(permissionService).requireCanAddItems(actor, listId);
+
+        // Act + Assert
+        assertThatThrownBy(() -> taskService.createTask(actor, listId, "Buy milk"))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void markDone_actorAware_checksTogglePermissionForTasksList_thenDelegates() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        // Act
+        final TaskService.TaskToggle result = taskService.markDone(actor, id);
+
+        // Assert
+        verify(permissionService).requireCanToggleItems(actor, task.getListId());
+        assertThat(result.task().getStatus()).isEqualTo(TaskStatus.DONE);
+    }
+
+    @Test
+    void reopen_actorAware_throws_whenTogglePermissionDenied() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        doThrow(new ListPermissionDeniedException(actor, task.getListId(), "toggle items", null))
+                .when(permissionService).requireCanToggleItems(actor, task.getListId());
+
+        // Act + Assert
+        assertThatThrownBy(() -> taskService.reopen(actor, id))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
     }
 }
