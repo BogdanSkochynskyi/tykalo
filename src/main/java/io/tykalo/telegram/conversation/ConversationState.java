@@ -75,8 +75,13 @@ public sealed interface ConversationState {
     record CreatingListType() implements ConversationState {
     }
 
-    /** Naming a new list of the chosen {@code type} (TK-185) — consumes plain-text input. */
-    record CreatingListName(ListType type) implements ConversationState {
+    /**
+     * Naming a new list of the chosen {@code type} (TK-185) — consumes plain-text input. Carries the id
+     * of the prompt message (the one that shows "Name your list:") so the submitted name can re-render
+     * that same message in place — as a validation notice on a blank/duplicate name, or as the new
+     * list's view (TK-183) on success.
+     */
+    record CreatingListName(ListType type, int promptMessageId) implements ConversationState {
         @Override
         public boolean expectsTextInput() {
             return true;

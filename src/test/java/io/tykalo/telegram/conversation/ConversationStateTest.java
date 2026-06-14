@@ -31,7 +31,7 @@ class ConversationStateTest {
                 new ListView(listId),
                 new AddingItems(listId, 42),
                 new CreatingListType(),
-                new CreatingListName(ListType.PROJECT),
+                new CreatingListName(ListType.PROJECT, 7),
                 new ListSettings(listId),
                 new RenamingList(listId));
 
@@ -50,8 +50,8 @@ class ConversationStateTest {
         assertThat(mapper.writeValueAsString(new ListView(listId)))
                 .isEqualTo("{\"@type\":\"LIST_VIEW\",\"listId\":\"" + listId + "\"}");
         // The "type" component must not collide with the "@type" discriminator.
-        assertThat(mapper.writeValueAsString(new CreatingListName(ListType.CHECKLIST)))
-                .isEqualTo("{\"@type\":\"CREATING_LIST_NAME\",\"type\":\"CHECKLIST\"}");
+        assertThat(mapper.writeValueAsString(new CreatingListName(ListType.CHECKLIST, 42)))
+                .isEqualTo("{\"@type\":\"CREATING_LIST_NAME\",\"type\":\"CHECKLIST\",\"promptMessageId\":42}");
     }
 
     @Test
@@ -68,7 +68,7 @@ class ConversationStateTest {
         final UUID listId = UUID.randomUUID();
 
         assertThat(new AddingItems(listId, 42).expectsTextInput()).isTrue();
-        assertThat(new CreatingListName(ListType.INBOX).expectsTextInput()).isTrue();
+        assertThat(new CreatingListName(ListType.INBOX, 1).expectsTextInput()).isTrue();
         assertThat(new RenamingList(listId).expectsTextInput()).isTrue();
 
         assertThat(new Idle().expectsTextInput()).isFalse();

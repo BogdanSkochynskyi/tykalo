@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.menu.CreateListService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
@@ -40,6 +41,9 @@ class MyListsCallbackHandlerTest {
 
     @Mock
     private ListViewService listViewService;
+
+    @Mock
+    private CreateListService createListService;
 
     @InjectMocks
     private MyListsCallbackHandler handler;
@@ -96,10 +100,13 @@ class MyListsCallbackHandlerTest {
     }
 
     @Test
-    void newList_isAStubToast_pointingAtTheCreateCommand() {
+    void newList_startsTheCreateFlowInPlace() {
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+
         final Optional<String> toast = handler.handle(callbackOnMessage(MyListsService.NEW));
 
-        assertThat(toast).get().asString().contains("/list create");
+        assertThat(toast).get().asString().contains("New list");
+        verify(createListService).start(user, MESSAGE_ID);
         verifyNoInteractions(myListsService, menuService);
     }
 

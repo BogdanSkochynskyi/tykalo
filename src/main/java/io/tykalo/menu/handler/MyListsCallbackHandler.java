@@ -1,5 +1,6 @@
 package io.tykalo.menu.handler;
 
+import io.tykalo.menu.CreateListService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
@@ -17,10 +18,9 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 /**
  * Handles the My Lists screen buttons (TK-182), claiming the {@code lists:} {@code callback_data}
  * prefix: {@code lists:open:{id}} opens the list view (TK-183), {@code lists:page:{n}} pages the
- * screen, {@code lists:menu} returns to the main menu, and {@code lists:new} is a placeholder until
- * the create flow (TK-185) lands. Every action edits the screen in place, so the clicking user is
- * re-resolved from the chat and the message id taken from the callback. Non-{@code lists:} callbacks
- * are left unclaimed.
+ * screen, {@code lists:menu} returns to the main menu, and {@code lists:new} starts the new-list flow
+ * (TK-185). Every action edits the screen in place, so the clicking user is re-resolved from the chat
+ * and the message id taken from the callback. Non-{@code lists:} callbacks are left unclaimed.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,15 +32,13 @@ public class MyListsCallbackHandler implements CallbackHandler {
     private final MyListsService myListsService;
     private final MenuService menuService;
     private final ListViewService listViewService;
+    private final CreateListService createListService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
         final String data = callback.getData();
         if (data == null || !data.startsWith(PREFIX)) {
             return Optional.empty();
-        }
-        if (data.equals(MyListsService.NEW)) {
-            return Optional.of("➕ Use /list create <name> [type] for now.");
         }
         // Every action edits the screen in place, so it needs the user and message id.
         final Long chatId = chatIdOf(callback);
@@ -60,6 +58,10 @@ public class MyListsCallbackHandler implements CallbackHandler {
             return listViewService.open(user.get(), messageId, listId)
                     .map("📋 "::concat)
                     .or(() -> Optional.of("That list is no longer available."));
+        }
+        if (data.equals(MyListsService.NEW)) {
+            createListService.start(user.get(), messageId);
+            return Optional.of("➕ New list");
         }
         if (data.equals(MyListsService.BACK)) {
             menuService.editToMainMenu(user.get(), messageId);
