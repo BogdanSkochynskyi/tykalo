@@ -6,6 +6,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import static org.mockito.ArgumentMatchers.any;
+
+import io.tykalo.list.DeepLinkInviteResult;
+import io.tykalo.list.ListInvite;
+import io.tykalo.list.ListInvitePromptService;
+import io.tykalo.list.ListInviteService;
+import io.tykalo.list.ListMember;
+import io.tykalo.list.ListMemberRole;
+import io.tykalo.list.ListType;
+import io.tykalo.list.TaskList;
 import io.tykalo.menu.MenuService;
 import io.tykalo.nudger.AcceptResult;
 import io.tykalo.nudger.NudgeInvite;
@@ -35,6 +45,10 @@ class StartCommandHandlerTest {
     private NudgerService nudgerService;
     @Mock
     private NudgerPromptService promptService;
+    @Mock
+    private ListInviteService listInviteService;
+    @Mock
+    private ListInvitePromptService listInvitePromptService;
     @Mock
     private OnboardingService onboardingService;
     @Mock
@@ -115,6 +129,35 @@ class StartCommandHandlerTest {
         assertThat(reply)
                 .contains("Welcome to Tykalo")
                 .contains("@alice invited you to be their Nudger");
+    }
+
+    @Test
+    void start_wiresUpListInvite_andSkipsOnboarding_fromDeepLink() {
+        // Arrange
+        final UUID listId = UUID.randomUUID();
+        final User inviter = User.create(7L, "alice", ZoneId.of("Europe/Kyiv"), "uk");
+        inviter.setId(UUID.randomUUID());
+        final Update update = TelegramUpdateFixtures.command(
+                "/start " + ListInvite.payloadFor(listId, inviter.getId(), ListMemberRole.MEMBER), 42L, "bob", "uk");
+        final User invitee = User.create(42L, "bob", ZoneId.of("Europe/Kyiv"), "uk");
+        final TaskList list = TaskList.of(inviter, "Groceries", ListType.CHECKLIST);
+        list.setId(listId);
+        final ListMember member = ListMember.pendingInvite(listId, UUID.randomUUID(), ListMemberRole.MEMBER,
+                inviter.getId());
+        member.setId(UUID.randomUUID());
+        when(userService.register(update)).thenReturn(new Registration(invitee, true));
+        when(listInviteService.acceptViaDeepLink(eq(invitee), any(ListInvite.Payload.class)))
+                .thenReturn(new DeepLinkInviteResult.Invited(member, inviter, list));
+
+        // Act
+        final String reply = handler.start(update);
+
+        // Assert
+        verify(listInvitePromptService).sendInvitePrompt(member, invitee, inviter, list);
+        verifyNoInteractions(onboardingService, nudgerService);
+        assertThat(reply)
+                .contains("Welcome to Tykalo")
+                .contains("@alice invited you to join the list \"Groceries\"");
     }
 
     @Test

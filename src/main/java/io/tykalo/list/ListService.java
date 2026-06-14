@@ -70,17 +70,19 @@ public class ListService {
     }
 
     /**
-     * Every active list the user can access: their own lists unioned with lists they hold a
-     * {@link ListMember} row on (shared lists, TK-191). Deduped by id with owned lists first, so a
-     * list where the user is both {@code owner_id} and has an explicit OWNER row appears once.
-     * Archived lists are excluded on both sides.
+     * Every active list the user can access: their own lists unioned with lists they hold an
+     * {@link ListMemberStatus#ACTIVE} {@link ListMember} row on (shared lists, TK-191). Deduped by id
+     * with owned lists first, so a list where the user is both {@code owner_id} and has an explicit
+     * OWNER row appears once. Archived lists are excluded on both sides; PENDING invites (TK-193) are
+     * not yet accessible, so they don't appear here.
      */
     @Transactional(readOnly = true)
     public List<TaskList> findAllAccessibleLists(final UUID userId) {
         final LinkedHashMap<UUID, TaskList> byId = new LinkedHashMap<>();
         listRepository.findByOwnerIdAndArchivedAtIsNull(userId)
                 .forEach(list -> byId.put(list.getId(), list));
-        final List<UUID> memberListIds = listMemberRepository.findByUserId(userId).stream()
+        final List<UUID> memberListIds =
+                listMemberRepository.findByUserIdAndStatus(userId, ListMemberStatus.ACTIVE).stream()
                 .map(ListMember::getListId)
                 .toList();
         listRepository.findAllById(memberListIds).stream()
