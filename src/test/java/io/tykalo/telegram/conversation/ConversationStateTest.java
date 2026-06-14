@@ -33,7 +33,7 @@ class ConversationStateTest {
                 new CreatingListType(),
                 new CreatingListName(ListType.PROJECT, 7),
                 new ListSettings(listId),
-                new RenamingList(listId));
+                new RenamingList(listId, 8));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -69,7 +69,7 @@ class ConversationStateTest {
 
         assertThat(new AddingItems(listId, 42).expectsTextInput()).isTrue();
         assertThat(new CreatingListName(ListType.INBOX, 1).expectsTextInput()).isTrue();
-        assertThat(new RenamingList(listId).expectsTextInput()).isTrue();
+        assertThat(new RenamingList(listId, 1).expectsTextInput()).isTrue();
 
         assertThat(new Idle().expectsTextInput()).isFalse();
         assertThat(new MainMenu().expectsTextInput()).isFalse();

@@ -92,6 +92,37 @@ public class ListService {
                 .findFirst();
     }
 
+    /** Renames a list. The caller validates the name (non-blank, no duplicate per owner) at the boundary. */
+    @Transactional
+    public TaskList rename(final UUID id, final String newName) {
+        if (newName == null || newName.isBlank()) {
+            throw new IllegalArgumentException("List name must not be blank");
+        }
+        final TaskList list = listRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + id));
+        list.setName(newName.strip());
+        log.info("Renamed list id={} to \"{}\"", id, list.getName());
+        return list;
+    }
+
+    /**
+     * Changes a list's type, realigning its default Nudger policy to the new type. {@code INBOX} is
+     * reserved (auto-provisioned per user) and rejected. The caller guards type-specific invariants
+     * (e.g. leaving PROJECT while tasks still have Nudgers) before calling.
+     */
+    @Transactional
+    public TaskList changeType(final UUID id, final ListType type) {
+        if (type == ListType.INBOX) {
+            throw new IllegalArgumentException("Cannot change a list to the reserved INBOX type");
+        }
+        final TaskList list = listRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + id));
+        list.setType(type);
+        list.setNudgerDefaultPolicy(type.getDefaultNudgerPolicy());
+        log.info("Changed type of list id={} to {}", id, type);
+        return list;
+    }
+
     @Transactional
     public void deleteList(final UUID id) {
         final TaskList list = listRepository.findById(id)
