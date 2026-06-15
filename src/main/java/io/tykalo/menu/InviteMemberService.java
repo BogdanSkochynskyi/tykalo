@@ -22,24 +22,22 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
- * Interim entry point for inviting members from the list view (TK-193). Tapping {@code 👥 Members}
- * {@link #start}s it: the list-view message is edited in place into an invite prompt showing a share-link
- * and asking for a {@code @username}, and the user's {@link ConversationState} becomes
- * {@link ConversationState.InvitingMember}. Each plain-text message in that state is one
- * {@code @username} to invite (default role MEMBER) via {@link ListInviteService}; the registered invitee
- * gets the Yes/No prompt ({@link ListInvitePromptService}). {@code ❌ Cancel} restores the list view.
- *
- * <p>This is deliberately minimal — the full Members screen (member list, role dropdown, remove /
- * transfer) is TK-194, which will reuse {@link ListInviteService}. The flow is gated by
- * {@link ListPermissionService#canManageMembers} so only OWNER/EDITOR can open it.
+ * The invite-by-username sub-flow, launched from the Members screen (TK-194; originally the interim
+ * TK-193 entry point). {@link #start} edits the screen message in place into an invite prompt and sets
+ * the user's {@link ConversationState} to {@link ConversationState.InvitingMember}. Each plain-text
+ * message in that state is one {@code @username} to invite (default role MEMBER) via
+ * {@link ListInviteService}; the registered invitee gets the Yes/No prompt
+ * ({@link ListInvitePromptService}). {@code ❌ Cancel} ({@link #CANCEL_PREFIX}) returns to the Members
+ * screen. The flow is gated by {@link ListPermissionService#canManageMembers} so only OWNER/EDITOR can
+ * open it.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class InviteMemberService {
 
-    /** {@code ❌ Cancel} callback on the invite prompt — routed back through the list-view handler. */
-    public static final String CANCEL_PREFIX = "lv:invx:";
+    /** {@code ❌ Cancel} callback on the invite prompt — routed back to the Members screen (TK-194). */
+    public static final String CANCEL_PREFIX = "ms:invx:";
 
     private static final ListMemberRole DEFAULT_ROLE = ListMemberRole.MEMBER;
 
