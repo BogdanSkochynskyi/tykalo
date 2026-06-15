@@ -5,7 +5,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -61,6 +64,39 @@ class ListMessageRefreshWireMockTest {
     @AfterEach
     void stopWireMock() {
         wireMock.stop();
+    }
+
+    @Test
+    void listChange_dropsTheRow_whenTelegramReturns400BadRequest() {
+        // Arrange — Telegram reports the live message is gone (deleted by the user / too old)
+        wireMock.resetAll();
+        wireMock.stubFor(post(urlPathEqualTo(EDIT_PATH)).willReturn(aResponse()
+                .withStatus(400)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"ok\":false,\"error_code\":400,"
+                        + "\"description\":\"Bad Request: message to edit not found\"}")));
+
+        final UUID listId = UUID.randomUUID();
+        final User owner = User.create(1L, "owner", ZoneId.of("Europe/Kyiv"), "uk");
+        owner.setId(UUID.randomUUID());
+        final TaskList list = TaskList.checklist(owner, "Groceries");
+        list.setId(listId);
+        final ListMessage record = ListMessage.of(listId, CHAT_ID, MESSAGE_ID);
+        when(listMessageRepository.findByListId(listId)).thenReturn(List.of(record));
+        when(listRepository.findById(listId)).thenReturn(Optional.of(list));
+        when(taskRepository.findByListIdAndArchivedAtIsNullOrderByCreatedAtAsc(listId))
+                .thenReturn(List.of(task("Buy milk")));
+
+        final ListMessageService service = new ListMessageService(
+                taskRepository, listRepository, listMessageRepository, new ListRenderer(), gateway());
+
+        // Act
+        service.onListChanged(new ListChangedEvent(listId));
+
+        // Assert — the edit was attempted and the dead row dropped, never re-saved
+        wireMock.verify(1, postRequestedFor(urlPathEqualTo(EDIT_PATH)));
+        verify(listMessageRepository).delete(record);
+        verify(listMessageRepository, never()).save(any());
     }
 
     @Test

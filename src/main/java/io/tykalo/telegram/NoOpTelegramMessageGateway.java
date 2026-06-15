@@ -26,9 +26,10 @@ public class NoOpTelegramMessageGateway implements TelegramMessageGateway {
     }
 
     @Override
-    public void editMarkdown(final long chatId, final int messageId, final String markdownV2,
-                             final @Nullable InlineKeyboardMarkup keyboard) {
+    public EditOutcome editMarkdown(final long chatId, final int messageId, final String markdownV2,
+                                    final @Nullable InlineKeyboardMarkup keyboard) {
         log.debug("Polling disabled — suppressing list message edit {} in chat {}", messageId, chatId);
+        return EditOutcome.EDITED;
     }
 
     @Override
