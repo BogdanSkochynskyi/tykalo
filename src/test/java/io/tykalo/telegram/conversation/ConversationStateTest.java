@@ -15,6 +15,7 @@ import io.tykalo.telegram.conversation.ConversationState.ListSettings;
 import io.tykalo.telegram.conversation.ConversationState.ListView;
 import io.tykalo.telegram.conversation.ConversationState.Lists;
 import io.tykalo.telegram.conversation.ConversationState.MainMenu;
+import io.tykalo.telegram.conversation.ConversationState.MembersScreen;
 import io.tykalo.telegram.conversation.ConversationState.RenamingList;
 import java.util.List;
 import java.util.UUID;
@@ -38,7 +39,8 @@ class ConversationStateTest {
                 new ListSettings(listId),
                 new RenamingList(listId),
                 new Help(),
-                new HelpCategory(HelpTopic.NUDGERS));
+                new HelpCategory(HelpTopic.NUDGERS),
+                new MembersScreen(listId));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -84,5 +86,6 @@ class ConversationStateTest {
         assertThat(new ListSettings(listId).expectsTextInput()).isFalse();
         assertThat(new Help().expectsTextInput()).isFalse();
         assertThat(new HelpCategory(HelpTopic.LISTS).expectsTextInput()).isFalse();
+        assertThat(new MembersScreen(listId).expectsTextInput()).isFalse();
     }
 }

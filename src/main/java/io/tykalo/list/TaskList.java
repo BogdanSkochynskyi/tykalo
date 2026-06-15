@@ -37,7 +37,8 @@ public class TaskList {
     @GeneratedValue(strategy = GenerationType.UUID)
     private @Nullable UUID id;
 
-    @Column(name = "owner_id", nullable = false, updatable = false)
+    // Mutable: ownership transfer (TK-194) reassigns owner_id so it stays the authority source.
+    @Column(name = "owner_id", nullable = false)
     private UUID ownerId;
 
     @Column(name = "name", nullable = false, length = 255)

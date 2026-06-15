@@ -12,8 +12,8 @@ import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
 import io.tykalo.list.TaskStatus;
 import io.tykalo.menu.AddItemsService;
-import io.tykalo.menu.InviteMemberService;
 import io.tykalo.menu.ListViewService;
+import io.tykalo.menu.MembersService;
 import io.tykalo.menu.MyListsService;
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
@@ -52,7 +52,7 @@ class ListViewCallbackHandlerTest {
     private AddItemsService addItemsService;
 
     @Mock
-    private InviteMemberService inviteMemberService;
+    private MembersService membersService;
 
     @InjectMocks
     private ListViewCallbackHandler handler;
@@ -169,36 +169,24 @@ class ListViewCallbackHandlerTest {
     }
 
     @Test
-    void members_opensTheInviteFlow() {
+    void members_opensTheMembersScreen() {
         stubUser();
-        when(inviteMemberService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.of("Groceries"));
+        when(membersService.open(user, MESSAGE_ID, list.getId())).thenReturn(Optional.of("Groceries"));
 
         final Optional<String> toast =
                 handler.handle(callbackOnMessage(ListViewService.MEMBERS_PREFIX + list.getId()));
 
-        assertThat(toast).get().asString().contains("Inviting to");
-        verify(inviteMemberService).start(user, MESSAGE_ID, list.getId());
+        assertThat(toast).get().asString().contains("Members");
+        verify(membersService).open(user, MESSAGE_ID, list.getId());
     }
 
     @Test
-    void members_isRefused_whenUserCannotManage() {
+    void members_reportsListGone_whenOpenFails() {
         stubUser();
-        when(inviteMemberService.start(user, MESSAGE_ID, list.getId())).thenReturn(Optional.empty());
+        when(membersService.open(user, MESSAGE_ID, list.getId())).thenReturn(Optional.empty());
 
         assertThat(handler.handle(callbackOnMessage(ListViewService.MEMBERS_PREFIX + list.getId())))
-                .get().asString().contains("Only owners and editors");
-    }
-
-    @Test
-    void cancelInvite_returnsToListView() {
-        stubUser();
-        when(listViewService.show(user, MESSAGE_ID, list.getId(), 0)).thenReturn(Optional.of("Groceries"));
-
-        final Optional<String> toast =
-                handler.handle(callbackOnMessage(InviteMemberService.CANCEL_PREFIX + list.getId()));
-
-        assertThat(toast).get().asString().contains("Done inviting");
-        verify(listViewService).show(user, MESSAGE_ID, list.getId(), 0);
+                .get().asString().contains("no longer available");
     }
 
     @Test
