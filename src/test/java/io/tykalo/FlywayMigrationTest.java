@@ -399,6 +399,76 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
                 "idx_escalation_policies_target", "idx_nudge_log_target", "idx_nudge_log_nudger_id");
     }
 
+    @Test
+    void flyway_appliesV18Migration_successfully() {
+        // Act
+        final Boolean success = jdbcClient
+                .sql("SELECT success FROM flyway_schema_history WHERE version = '18'")
+                .query(Boolean.class)
+                .single();
+
+        // Assert
+        assertThat(success).isTrue();
+    }
+
+    @Test
+    void backfill_createsActiveOwnerRow_forListWithoutMembership() {
+        // Arrange — a list created the pre-TK-191 way: owner_id set, no list_members row
+        final UUID ownerId = insertUser(8021L);
+        final UUID listId = insertList(ownerId);
+
+        // Act — re-run the V18 backfill SQL (a fresh test DB has no pre-migration data, so we exercise
+        // the migration's statement directly against synthetic rows)
+        runBackfill();
+
+        // Assert — exactly one ACTIVE OWNER row whose joined_at mirrors the list's created_at
+        assertThat(ownerMemberships(listId)).hasSize(1);
+        final var row = jdbcClient.sql(
+                        "SELECT role, status FROM list_members WHERE list_id = ? AND user_id = ?")
+                .param(listId).param(ownerId)
+                .query((rs, n) -> rs.getString("role") + "/" + rs.getString("status"))
+                .single();
+        assertThat(row).isEqualTo("OWNER/ACTIVE");
+
+        final boolean joinedMatchesCreated = jdbcClient.sql(
+                        "SELECT lm.joined_at = l.created_at FROM list_members lm "
+                                + "JOIN lists l ON l.id = lm.list_id WHERE lm.list_id = ? AND lm.user_id = ?")
+                .param(listId).param(ownerId)
+                .query(Boolean.class).single();
+        assertThat(joinedMatchesCreated).isTrue();
+    }
+
+    @Test
+    void backfill_isIdempotent_whenOwnerRowAlreadyExists() {
+        // Arrange
+        final UUID ownerId = insertUser(8022L);
+        final UUID listId = insertList(ownerId);
+
+        // Act — running the backfill twice must not duplicate the OWNER row (NOT EXISTS guard)
+        runBackfill();
+        runBackfill();
+
+        // Assert
+        assertThat(ownerMemberships(listId)).hasSize(1);
+    }
+
+    private void runBackfill() {
+        jdbcClient.sql(
+                "INSERT INTO list_members (id, list_id, user_id, role, joined_at) "
+                        + "SELECT gen_random_uuid(), id, owner_id, 'OWNER', created_at FROM lists "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM list_members "
+                        + "WHERE list_id = lists.id AND user_id = lists.owner_id)")
+                .update();
+    }
+
+    private List<UUID> ownerMemberships(final UUID listId) {
+        return jdbcClient
+                .sql("SELECT id FROM list_members WHERE list_id = ? AND role = 'OWNER'")
+                .param(listId)
+                .query(UUID.class)
+                .list();
+    }
+
     private List<String> columnsOf(final String table) {
         return jdbcClient
                 .sql("SELECT column_name FROM information_schema.columns WHERE table_name = ?")
