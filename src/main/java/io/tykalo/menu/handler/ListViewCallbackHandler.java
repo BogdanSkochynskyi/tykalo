@@ -111,9 +111,9 @@ public class ListViewCallbackHandler implements CallbackHandler {
             return Optional.of("Task not found.");
         }
         if (done) {
-            taskService.markDone(taskId);
+            taskService.markDone(user.getId(), taskId);
         } else {
-            taskService.reopen(taskId);
+            taskService.reopen(user.getId(), taskId);
         }
         final Optional<String> shown = listViewService.show(user, messageId, task.get().getListId(), page.get());
         return shown.isPresent() ? Optional.of(done ? "✅ Done" : "↩️ Reopened")

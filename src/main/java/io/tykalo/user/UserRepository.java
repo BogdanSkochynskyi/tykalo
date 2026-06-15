@@ -14,4 +14,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     /** Users with the morning digest enabled (a non-null digest hour) — the cron's candidate set. */
     List<User> findByDigestHourIsNotNull();
+
+    /** Users on a given list-change notification preference — the daily-digest sweep's candidate set. */
+    List<User> findByListChangeNotifications(ListChangeNotificationPreference listChangeNotifications);
 }

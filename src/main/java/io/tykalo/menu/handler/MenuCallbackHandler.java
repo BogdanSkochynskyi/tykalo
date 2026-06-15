@@ -4,6 +4,7 @@ import io.tykalo.menu.CreateListService;
 import io.tykalo.menu.HelpService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
+import io.tykalo.menu.SettingsService;
 import io.tykalo.telegram.CallbackHandler;
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
@@ -16,11 +17,11 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 /**
  * Handles the main-menu buttons (TK-181), claiming the {@code menu:} {@code callback_data} prefix.
  * {@code menu:my_lists} transitions to the My Lists screen (TK-182) and {@code menu:create} starts the
- * new-list flow (TK-185), both by editing the menu message in place; the remaining options' screens
- * land in later tickets (Settings → TK-186; Shared → TK-191, Stats → TBD), so for now they answer with
- * a short placeholder toast pointing at the equivalent command, while {@code menu:help} opens the help
- * screen (TK-189) in place. As each screen is built, its case here becomes a real transition. Callbacks
- * that are not a {@code menu:} action are left unclaimed.
+ * new-list flow (TK-185); {@code menu:help} opens the help screen (TK-189) and {@code menu:settings} the
+ * settings screen (TK-196), all by editing the menu message in place. The remaining options' screens land
+ * in later tickets (Shared → TK-191, Stats → TBD), so for now they answer with a short placeholder toast.
+ * As each screen is built, its case here becomes a real transition. Callbacks that are not a {@code menu:}
+ * action are left unclaimed.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,6 +31,7 @@ public class MenuCallbackHandler implements CallbackHandler {
     private final MyListsService myListsService;
     private final CreateListService createListService;
     private final HelpService helpService;
+    private final SettingsService settingsService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
@@ -46,10 +48,12 @@ public class MenuCallbackHandler implements CallbackHandler {
         if (data.equals(MenuService.HELP)) {
             return openHelp(callback);
         }
+        if (data.equals(MenuService.SETTINGS)) {
+            return openSettings(callback);
+        }
         return switch (data) {
             case MenuService.SHARED -> Optional.of("👥 Shared lists are coming soon.");
             case MenuService.STATS -> Optional.of("📊 Stats are coming soon.");
-            case MenuService.SETTINGS -> Optional.of("⚙️ Use /tz, /quiet and /morning for now.");
             default -> Optional.empty();
         };
     }
@@ -97,5 +101,20 @@ public class MenuCallbackHandler implements CallbackHandler {
         }
         helpService.navigate(user.get(), messageId);
         return Optional.of("❓ Help");
+    }
+
+    private Optional<String> openSettings(final CallbackQuery callback) {
+        final MaybeInaccessibleMessage message = callback.getMessage();
+        final Long chatId = message == null ? null : message.getChatId();
+        final Integer messageId = message == null ? null : message.getMessageId();
+        if (chatId == null || messageId == null) {
+            return Optional.of("This button has expired.");
+        }
+        final Optional<User> user = userRepository.findByTgChatId(chatId);
+        if (user.isEmpty()) {
+            return Optional.of("This button has expired.");
+        }
+        settingsService.navigate(user.get(), messageId);
+        return Optional.of("⚙️ Settings");
     }
 }

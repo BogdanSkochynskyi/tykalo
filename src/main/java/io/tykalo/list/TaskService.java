@@ -41,14 +41,20 @@ public class TaskService {
     @Transactional
     public Task createTask(final UUID actorId, final UUID listId, final String title) {
         permissionService.requireCanAddItems(actorId, listId);
-        return createTask(listId, title);
+        final Task task = createTask(listId, title);
+        announceActivity(listId, actorId, ListActivityEvent.Kind.ADDED, 1);
+        return task;
     }
 
     /** Permission-checked bulk add on behalf of {@code actorId}; see {@link #createTask(UUID, UUID, String)}. */
     @Transactional
     public List<Task> createTasks(final UUID actorId, final UUID listId, final List<String> titles) {
         permissionService.requireCanAddItems(actorId, listId);
-        return createTasks(listId, titles);
+        final List<Task> created = createTasks(listId, titles);
+        if (!created.isEmpty()) {
+            announceActivity(listId, actorId, ListActivityEvent.Kind.ADDED, created.size());
+        }
+        return created;
     }
 
     /**
@@ -57,8 +63,13 @@ public class TaskService {
      */
     @Transactional
     public TaskToggle markDone(final UUID actorId, final UUID taskId) {
-        permissionService.requireCanToggleItems(actorId, require(taskId).getListId());
-        return markDone(taskId);
+        final UUID listId = require(taskId).getListId();
+        permissionService.requireCanToggleItems(actorId, listId);
+        final TaskToggle toggle = markDone(taskId);
+        if (toggle.changed()) {
+            announceActivity(listId, actorId, ListActivityEvent.Kind.COMPLETED, 1);
+        }
+        return toggle;
     }
 
     /** Permission-checked reopen on behalf of {@code actorId}; see {@link #markDone(UUID, UUID)}. */
@@ -356,6 +367,16 @@ public class TaskService {
      */
     private void announceChange(final UUID listId) {
         eventPublisher.publishEvent(new ListChangedEvent(listId));
+    }
+
+    /**
+     * Announces an attributable user action (items added/completed) so the shared-list notification
+     * aggregator (TK-196) can push the right members. Fired only from the actor-aware entry points —
+     * system/recurrence paths produce a {@link ListChangedEvent} for live sync but no push.
+     */
+    private void announceActivity(final UUID listId, final UUID actorId,
+                                  final ListActivityEvent.Kind kind, final int count) {
+        eventPublisher.publishEvent(new ListActivityEvent(listId, actorId, kind, count));
     }
 
     private ZoneId ownerZone(final UUID ownerId) {

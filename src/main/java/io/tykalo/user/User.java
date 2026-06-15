@@ -4,6 +4,8 @@ import io.tykalo.common.ZoneIdConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -35,6 +37,8 @@ public class User {
     static final LocalTime DEFAULT_QUIET_HOURS_END = LocalTime.of(7, 0);
     static final int DEFAULT_DIGEST_HOUR = 8;
     static final int DEFAULT_NUDGER_DAILY_LIMIT = 3;
+    static final ListChangeNotificationPreference DEFAULT_LIST_CHANGE_NOTIFICATIONS =
+            ListChangeNotificationPreference.BATCHED;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -65,6 +69,10 @@ public class User {
     @Column(name = "nudger_daily_limit", nullable = false)
     private int nudgerDailyLimit = DEFAULT_NUDGER_DAILY_LIMIT;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "list_change_notifications", nullable = false)
+    private ListChangeNotificationPreference listChangeNotifications = DEFAULT_LIST_CHANGE_NOTIFICATIONS;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private @Nullable Instant createdAt;
@@ -84,6 +92,7 @@ public class User {
         user.quietHoursEnd = DEFAULT_QUIET_HOURS_END;
         user.digestHour = DEFAULT_DIGEST_HOUR;
         user.nudgerDailyLimit = DEFAULT_NUDGER_DAILY_LIMIT;
+        user.listChangeNotifications = DEFAULT_LIST_CHANGE_NOTIFICATIONS;
         return user;
     }
 }

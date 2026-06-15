@@ -9,6 +9,7 @@ import io.tykalo.menu.CreateListService;
 import io.tykalo.menu.HelpService;
 import io.tykalo.menu.MenuService;
 import io.tykalo.menu.MyListsService;
+import io.tykalo.menu.SettingsService;
 import io.tykalo.user.User;
 import io.tykalo.user.UserRepository;
 import java.time.ZoneId;
@@ -41,17 +42,31 @@ class MenuCallbackHandlerTest {
     @Mock
     private HelpService helpService;
 
+    @Mock
+    private SettingsService settingsService;
+
     @InjectMocks
     private MenuCallbackHandler handler;
 
     @Test
     void placeholderButtons_areClaimedWithAToast() {
-        final List<String> stubButtons = List.of(MenuService.SHARED, MenuService.STATS, MenuService.SETTINGS);
+        final List<String> stubButtons = List.of(MenuService.SHARED, MenuService.STATS);
 
         for (final String action : stubButtons) {
             assertThat(handler.handle(callback(action))).as("toast for %s", action).isPresent();
         }
-        verifyNoInteractions(myListsService, createListService, helpService);
+        verifyNoInteractions(myListsService, createListService, helpService, settingsService);
+    }
+
+    @Test
+    void settingsButton_opensTheSettingsScreenInPlace() {
+        final User user = User.create(CHAT_ID, "tester", ZoneId.of("Europe/Kyiv"), "en");
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+
+        final Optional<String> toast = handler.handle(callbackOnMessage(MenuService.SETTINGS));
+
+        assertThat(toast).get().asString().contains("Settings");
+        verify(settingsService).navigate(user, MESSAGE_ID);
     }
 
     @Test

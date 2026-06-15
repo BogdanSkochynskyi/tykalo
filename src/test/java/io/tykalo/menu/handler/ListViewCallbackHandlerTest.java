@@ -90,7 +90,7 @@ class ListViewCallbackHandlerTest {
                 handler.handle(callbackOnMessage(ListViewService.DONE_PREFIX + milk.getId() + ":2"));
 
         assertThat(toast).get().asString().contains("Done");
-        verify(taskService).markDone(milk.getId());
+        verify(taskService).markDone(user.getId(), milk.getId());
         verify(listViewService).show(user, MESSAGE_ID, list.getId(), 2);
     }
 
@@ -105,7 +105,7 @@ class ListViewCallbackHandlerTest {
                 handler.handle(callbackOnMessage(ListViewService.UNDO_PREFIX + milk.getId() + ":0"));
 
         assertThat(toast).get().asString().contains("Reopened");
-        verify(taskService).reopen(milk.getId());
+        verify(taskService).reopen(user.getId(), milk.getId());
     }
 
     @Test
@@ -116,7 +116,7 @@ class ListViewCallbackHandlerTest {
 
         assertThat(handler.handle(callbackOnMessage(ListViewService.DONE_PREFIX + taskId + ":0")))
                 .get().asString().contains("not found");
-        verify(taskService, never()).markDone(taskId);
+        verify(taskService, never()).markDone(user.getId(), taskId);
     }
 
     @Test

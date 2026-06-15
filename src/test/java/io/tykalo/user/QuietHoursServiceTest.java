@@ -102,4 +102,40 @@ class QuietHoursServiceTest {
 
         assertThat(service.isQuiet(user, utc(23, 0))).isTrue();
     }
+
+    @Test
+    void nextActiveAt_returnsInstantUnchanged_whenNotQuiet() {
+        final User user = userWith(ZoneId.of("UTC"), LocalTime.of(22, 0), LocalTime.of(7, 0));
+        final Instant noon = utc(12, 0);
+
+        assertThat(service.nextActiveAt(user, noon)).isEqualTo(noon);
+    }
+
+    @Test
+    void nextActiveAt_returnsEndOfQuietHours_whenQuietLateEvening() {
+        // 23:00 on 2026-06-07 is quiet (22:00–07:00); the window ends at 07:00 the next morning.
+        final User user = userWith(ZoneId.of("UTC"), LocalTime.of(22, 0), LocalTime.of(7, 0));
+
+        assertThat(service.nextActiveAt(user, utc(23, 0)))
+                .isEqualTo(LocalTime.of(7, 0).atDate(java.time.LocalDate.of(2026, 6, 8))
+                        .atZone(ZoneId.of("UTC")).toInstant());
+    }
+
+    @Test
+    void nextActiveAt_returnsEndSameDay_whenQuietEarlyMorning() {
+        // 03:00 is quiet; the window ends at 07:00 the same day.
+        final User user = userWith(ZoneId.of("UTC"), LocalTime.of(22, 0), LocalTime.of(7, 0));
+
+        assertThat(service.nextActiveAt(user, utc(3, 0))).isEqualTo(utc(7, 0));
+    }
+
+    @Test
+    void nextActiveAt_respectsUserTimezone() {
+        // Kyiv is UTC+3 in June; quiet 22:00–07:00 Kyiv. 20:00 UTC = 23:00 Kyiv (quiet) → ends 07:00 Kyiv = 04:00 UTC next day.
+        final User user = userWith(ZoneId.of("Europe/Kyiv"), LocalTime.of(22, 0), LocalTime.of(7, 0));
+
+        assertThat(service.nextActiveAt(user, utc(20, 0)))
+                .isEqualTo(LocalTime.of(4, 0).atDate(java.time.LocalDate.of(2026, 6, 8))
+                        .atZone(ZoneId.of("UTC")).toInstant());
+    }
 }

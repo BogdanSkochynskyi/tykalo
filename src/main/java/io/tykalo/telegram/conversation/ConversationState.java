@@ -38,6 +38,7 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.HelpCategory.class, name = "HELP_CATEGORY"),
         @JsonSubTypes.Type(value = ConversationState.InvitingMember.class, name = "INVITING_MEMBER"),
         @JsonSubTypes.Type(value = ConversationState.MembersScreen.class, name = "MEMBERS_SCREEN"),
+        @JsonSubTypes.Type(value = ConversationState.Settings.class, name = "SETTINGS"),
 })
 public sealed interface ConversationState {
 
@@ -128,5 +129,9 @@ public sealed interface ConversationState {
 
     /** The members screen of a shared list (TK-194) — navigation only (member list, remove, transfer). */
     record MembersScreen(UUID listId) implements ConversationState {
+    }
+
+    /** The settings screen (TK-196) — navigation only (notification preference radio buttons). */
+    record Settings() implements ConversationState {
     }
 }
