@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.telegram.EditOutcome;
 import io.tykalo.telegram.TelegramMessageGateway;
 import io.tykalo.user.User;
 import java.time.ZoneId;
@@ -167,6 +168,29 @@ class ListMessageServiceTest {
         verify(gateway, never()).sendMarkdownDirect(anyLong(), anyString(), any());
         // Both records are persisted (their equals is id-based and both are unsaved, so assert the count).
         verify(listMessageRepository, times(2)).save(any(ListMessage.class));
+    }
+
+    @Test
+    void onListChanged_dropsTheRow_whenItsLiveMessageIsGone() {
+        // Arrange — two chats mirror the list; the first message has been deleted by its user
+        stubTasks();
+        final ListMessage gone = ListMessage.of(list.getId(), 10L, 100L);
+        gone.setId(UUID.randomUUID());
+        final ListMessage alive = ListMessage.of(list.getId(), 20L, 200L);
+        alive.setId(UUID.randomUUID());
+        when(listMessageRepository.findByListId(list.getId())).thenReturn(List.of(gone, alive));
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(gateway.editMarkdown(eq(10L), eq(100), anyString(), any())).thenReturn(EditOutcome.MESSAGE_GONE);
+        when(gateway.editMarkdown(eq(20L), eq(200), anyString(), any())).thenReturn(EditOutcome.EDITED);
+
+        // Act
+        service.onListChanged(new ListChangedEvent(list.getId()));
+
+        // Assert — the dead row is removed and not re-saved; the live one is kept
+        verify(listMessageRepository).delete(gone);
+        verify(listMessageRepository, never()).delete(alive);
+        verify(listMessageRepository).save(alive);
+        verify(listMessageRepository, never()).save(gone);
     }
 
     @Test

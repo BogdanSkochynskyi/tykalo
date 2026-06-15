@@ -1,6 +1,8 @@
 package io.tykalo.telegram;
 
 import io.tykalo.telegram.ratelimit.MessageQueueService;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -11,6 +13,7 @@ import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageTe
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
@@ -25,6 +28,19 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 public class TelegramApiMessageGateway implements TelegramMessageGateway {
 
     private static final String PARSE_MODE = "MarkdownV2";
+
+    /**
+     * Lower-cased substrings of Telegram 400 descriptions that mean the target message can never be
+     * edited again. Kept deliberately specific so a transient or formatting 400 (e.g. "can't parse
+     * entities") never causes a still-valid {@code list_messages} row to be dropped.
+     */
+    private static final List<String> GONE_MARKERS = List.of(
+            "message to edit not found",
+            "message to be edited not found",
+            "message can't be edited",
+            "message_id_invalid",
+            "message identifier is not specified",
+            "message is too old");
 
     private final TelegramClient telegramClient;
     private final MessageQueueService messageQueue;
@@ -59,8 +75,8 @@ public class TelegramApiMessageGateway implements TelegramMessageGateway {
     }
 
     @Override
-    public void editMarkdown(final long chatId, final int messageId, final String markdownV2,
-                             final @Nullable InlineKeyboardMarkup keyboard) {
+    public EditOutcome editMarkdown(final long chatId, final int messageId, final String markdownV2,
+                                    final @Nullable InlineKeyboardMarkup keyboard) {
         final EditMessageText edit = EditMessageText.builder()
                 .chatId(chatId)
                 .messageId(messageId)
@@ -70,9 +86,48 @@ public class TelegramApiMessageGateway implements TelegramMessageGateway {
                 .build();
         try {
             telegramClient.execute(edit);
+            return EditOutcome.EDITED;
+        } catch (final TelegramApiRequestException e) {
+            return classifyEditFailure(chatId, messageId, e);
         } catch (final TelegramApiException e) {
-            log.warn("Failed to edit list message {} in chat {}", messageId, chatId, e);
+            log.warn("Failed to edit message {} in chat {}", messageId, chatId, e);
+            return EditOutcome.FAILED;
         }
+    }
+
+    /**
+     * Maps a Telegram edit error to an {@link EditOutcome}. Only errors that prove the message can
+     * never be edited again — a whitelisted 400 ("message to edit not found", "can't be edited", too
+     * old) or a 403 (chat unreachable) — are {@link EditOutcome#MESSAGE_GONE}; everything else,
+     * including "message is not modified", rate limits and parse errors, stays
+     * {@link EditOutcome#FAILED} so a transient or formatting fault never drops a still-valid record.
+     */
+    private EditOutcome classifyEditFailure(final long chatId, final int messageId,
+                                            final TelegramApiRequestException e) {
+        if (isMessageGone(e)) {
+            log.info("Live message {} in chat {} is gone ({}): dropping its record",
+                    messageId, chatId, e.getApiResponse());
+            return EditOutcome.MESSAGE_GONE;
+        }
+        log.warn("Failed to edit message {} in chat {}: [{}] {}",
+                messageId, chatId, e.getErrorCode(), e.getApiResponse());
+        return EditOutcome.FAILED;
+    }
+
+    private boolean isMessageGone(final TelegramApiRequestException e) {
+        final Integer code = e.getErrorCode();
+        if (code != null && code == 403) {
+            return true;
+        }
+        if (code == null || code != 400) {
+            return false;
+        }
+        final String description = e.getApiResponse();
+        if (description == null) {
+            return false;
+        }
+        final String lower = description.toLowerCase(Locale.ROOT);
+        return GONE_MARKERS.stream().anyMatch(lower::contains);
     }
 
     @Override

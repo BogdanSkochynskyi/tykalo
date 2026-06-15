@@ -33,8 +33,14 @@ public interface TelegramMessageGateway {
      */
     Optional<Integer> sendMarkdownDirect(long chatId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
 
-    /** Edits an existing message's text and inline keyboard in place. */
-    void editMarkdown(long chatId, int messageId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
+    /**
+     * Edits an existing message's text and inline keyboard in place, reporting whether the target
+     * still exists. A {@link EditOutcome#MESSAGE_GONE} result tells the caller the message can never
+     * be edited again (deleted, too old, or chat unreachable) so it can drop any record of it (TK-195);
+     * {@link EditOutcome#FAILED} is transient and worth retrying on the next change. Callers that don't
+     * track the message id may ignore the return value.
+     */
+    EditOutcome editMarkdown(long chatId, int messageId, String markdownV2, @Nullable InlineKeyboardMarkup keyboard);
 
     /**
      * Deletes a message in place — e.g. the transient add-items prompt (TK-184) once the user is done.

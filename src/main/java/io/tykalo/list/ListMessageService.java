@@ -1,5 +1,6 @@
 package io.tykalo.list;
 
+import io.tykalo.telegram.EditOutcome;
 import io.tykalo.telegram.TelegramMessageGateway;
 import java.util.List;
 import java.util.Objects;
@@ -38,9 +39,13 @@ public class ListMessageService {
     private final TelegramMessageGateway gateway;
 
     /**
-     * Re-renders every live message mirroring the changed list, editing each in place. Edit-only: it
-     * never sends a new message, so a mutation of a list nobody is viewing produces no chatter. Runs
-     * after the mutating transaction commits, off the database connection.
+     * Re-renders every live message mirroring the changed list, editing each in place — this is how a
+     * shared list updates simultaneously for every member who has opened it, each in their own chat
+     * (TK-195). Edit-only: it never sends a new message, so a mutation of a list nobody is viewing
+     * produces no chatter, and a member who hasn't opened it yet (no row) simply sees current state on
+     * next open. A message that can no longer be edited (deleted by the user, or past Telegram's 48h
+     * window) has its row dropped by {@link #edit} so the bot stops chasing a dead message. Runs after
+     * the mutating transaction commits, off the database connection.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onListChanged(final ListChangedEvent event) {
@@ -90,7 +95,14 @@ public class ListMessageService {
     }
 
     private void edit(final ListMessage record, final long chatId, final Rendered rendered) {
-        gateway.editMarkdown(chatId, (int) record.getTgMessageId(), rendered.text(), rendered.keyboard());
+        final EditOutcome outcome =
+                gateway.editMarkdown(chatId, (int) record.getTgMessageId(), rendered.text(), rendered.keyboard());
+        if (outcome == EditOutcome.MESSAGE_GONE) {
+            log.info("Dropping live message {} for list {} in chat {} — no longer editable",
+                    record.getTgMessageId(), record.getListId(), chatId);
+            listMessageRepository.delete(record);
+            return;
+        }
         record.markRendered();
         listMessageRepository.save(record);
     }
