@@ -97,7 +97,7 @@ class AddItemsServiceTest {
 
         assertThat(reply).isEmpty();
         final ArgumentCaptor<List<String>> titles = ArgumentCaptor.captor();
-        verify(taskService).createTasks(eq(list.getId()), titles.capture());
+        verify(taskService).createTasks(eq(user.getId()), eq(list.getId()), titles.capture());
         assertThat(titles.getValue()).containsExactly("Milk", "Bread", "Eggs");
         verify(listViewService).showLastPage(user, LIST_VIEW_MESSAGE_ID, list.getId());
     }
@@ -109,7 +109,7 @@ class AddItemsServiceTest {
 
         assertThat(service.addItems(user, state, "   \n  ")).isEmpty();
 
-        verify(taskService, never()).createTasks(any(), any());
+        verify(taskService, never()).createTasks(any(), any(), any());
         verify(listViewService, never()).showLastPage(any(), anyInt(), any());
     }
 
@@ -121,7 +121,7 @@ class AddItemsServiceTest {
         assertThat(service.addItems(user, state, "Milk")).get().asString().contains("no longer available");
 
         verify(conversationState).setState(user.getId(), new ConversationState.Idle());
-        verify(taskService, never()).createTasks(any(), any());
+        verify(taskService, never()).createTasks(any(), any(), any());
     }
 
     @Test

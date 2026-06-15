@@ -80,7 +80,7 @@ public class AddItemsService {
         if (titles.isEmpty()) {
             return Optional.empty();
         }
-        taskService.createTasks(state.listId(), titles);
+        taskService.createTasks(user.getId(), state.listId(), titles);
         listViewService.showLastPage(user, state.listViewMessageId(), state.listId());
         log.debug("Added {} item(s) to list={} for user id={}", titles.size(), state.listId(), user.getId());
         return Optional.empty();

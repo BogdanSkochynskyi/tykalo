@@ -752,4 +752,90 @@ class TaskServiceTest {
                 .isInstanceOf(ListPermissionDeniedException.class);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
     }
+
+    @Test
+    void createTask_actorAware_publishesAddedActivity() {
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.createTask(actor, list.getId(), "Buy milk");
+
+        final ListActivityEvent event = captureActivity();
+        assertThat(event.listId()).isEqualTo(list.getId());
+        assertThat(event.actorId()).isEqualTo(actor);
+        assertThat(event.kind()).isEqualTo(ListActivityEvent.Kind.ADDED);
+        assertThat(event.count()).isEqualTo(1);
+    }
+
+    @Test
+    void createTasks_actorAware_publishesAddedActivity_withCount() {
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = persistedList();
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.createTasks(actor, list.getId(), List.of("milk", "bread", "eggs"));
+
+        final ListActivityEvent event = captureActivity();
+        assertThat(event.kind()).isEqualTo(ListActivityEvent.Kind.ADDED);
+        assertThat(event.count()).isEqualTo(3);
+    }
+
+    @Test
+    void markDone_actorAware_publishesCompletedActivity_whenChanged() {
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(actor, id);
+
+        final ListActivityEvent event = captureActivity();
+        assertThat(event.actorId()).isEqualTo(actor);
+        assertThat(event.kind()).isEqualTo(ListActivityEvent.Kind.COMPLETED);
+        assertThat(event.count()).isEqualTo(1);
+    }
+
+    @Test
+    void markDone_actorAware_publishesNoActivity_whenAlreadyDone() {
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(actor, id);
+
+        assertThat(activityEvents()).isEmpty();
+    }
+
+    @Test
+    void reopen_actorAware_publishesNoActivity() {
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.reopen(actor, id);
+
+        assertThat(activityEvents()).isEmpty();
+    }
+
+    private ListActivityEvent captureActivity() {
+        final List<ListActivityEvent> events = activityEvents();
+        assertThat(events).hasSize(1);
+        return events.get(0);
+    }
+
+    private List<ListActivityEvent> activityEvents() {
+        final ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeast(0)).publishEvent(captor.capture());
+        return captor.getAllValues().stream()
+                .filter(ListActivityEvent.class::isInstance)
+                .map(ListActivityEvent.class::cast)
+                .toList();
+    }
 }

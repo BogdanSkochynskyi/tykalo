@@ -109,6 +109,18 @@ public class UserService {
         return saved;
     }
 
+    /**
+     * Persists the user's shared-list change notification preference (TK-196). The user is merged, as
+     * it arrives detached from the handler.
+     */
+    @Transactional
+    public User setListChangeNotifications(final User user, final ListChangeNotificationPreference preference) {
+        user.setListChangeNotifications(preference);
+        final User saved = userRepository.save(user);
+        log.info("Updated list-change notifications of user id={} to {}", saved.getId(), preference);
+        return saved;
+    }
+
     /** Clears the user's quiet-hours window, so no period is suppressed. */
     @Transactional
     public User disableQuietHours(final User user) {

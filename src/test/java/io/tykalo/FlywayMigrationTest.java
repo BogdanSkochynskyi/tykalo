@@ -40,7 +40,7 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "tg_chat_id", "tg_username", "timezone",
                 "quiet_hours_start", "quiet_hours_end", "locale", "created_at", "digest_hour",
-                "nudger_daily_limit");
+                "nudger_daily_limit", "list_change_notifications");
     }
 
     @Test
@@ -71,6 +71,21 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
 
         // Assert
         assertThat(limit).isEqualTo(3);
+    }
+
+    @Test
+    void listChangeNotifications_defaultsToBatched() {
+        // Arrange
+        insertUser(1008L);
+
+        // Act
+        final String preference = jdbcClient
+                .sql("SELECT list_change_notifications FROM users WHERE tg_chat_id = 1008")
+                .query(String.class)
+                .single();
+
+        // Assert
+        assertThat(preference).isEqualTo("BATCHED");
     }
 
     @Test

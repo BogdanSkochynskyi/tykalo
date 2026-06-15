@@ -3,6 +3,8 @@ package io.tykalo.user;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,5 +34,25 @@ public class QuietHoursService {
             return !now.isBefore(start) && now.isBefore(end);
         }
         return !now.isBefore(start) || now.isBefore(end);
+    }
+
+    /**
+     * The earliest instant at or after {@code from} when the user is no longer in quiet hours — used to
+     * defer a notification that would otherwise fire during quiet hours (TK-196). If {@code from} is
+     * already active (not quiet, or quiet hours disabled) it is returned unchanged; otherwise the next
+     * occurrence of the quiet-hours end time in the user's timezone.
+     */
+    public Instant nextActiveAt(final User user, final Instant from) {
+        if (!isQuiet(user, from)) {
+            return from;
+        }
+        final ZoneId zone = user.getTimezone() == null ? UTC : user.getTimezone();
+        final LocalTime end = Objects.requireNonNull(user.getQuietHoursEnd());
+        final ZonedDateTime fromZoned = from.atZone(zone);
+        ZonedDateTime candidate = fromZoned.with(end);
+        if (!candidate.isAfter(fromZoned)) {
+            candidate = candidate.plusDays(1);
+        }
+        return candidate.toInstant();
     }
 }
