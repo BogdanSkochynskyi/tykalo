@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.tykalo.list.ListType;
 import io.tykalo.menu.HelpTopic;
 import io.tykalo.telegram.conversation.ConversationState.AddingItems;
+import io.tykalo.telegram.conversation.ConversationState.ClosingList;
+import io.tykalo.telegram.conversation.ConversationState.ClosingListTarget;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListName;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListType;
 import io.tykalo.telegram.conversation.ConversationState.Help;
@@ -40,7 +42,9 @@ class ConversationStateTest {
                 new RenamingList(listId),
                 new Help(),
                 new HelpCategory(HelpTopic.NUDGERS),
-                new MembersScreen(listId));
+                new MembersScreen(listId),
+                new ClosingList(listId),
+                new ClosingListTarget(listId));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -87,5 +91,7 @@ class ConversationStateTest {
         assertThat(new Help().expectsTextInput()).isFalse();
         assertThat(new HelpCategory(HelpTopic.LISTS).expectsTextInput()).isFalse();
         assertThat(new MembersScreen(listId).expectsTextInput()).isFalse();
+        assertThat(new ClosingList(listId).expectsTextInput()).isFalse();
+        assertThat(new ClosingListTarget(listId).expectsTextInput()).isFalse();
     }
 }

@@ -11,7 +11,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.tykalo.list.ListPermissionService;
 import io.tykalo.list.ListService;
+import io.tykalo.list.ListStatus;
 import io.tykalo.list.ListType;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
@@ -48,6 +50,9 @@ class ListViewServiceTest {
 
     @Mock
     private TaskService taskService;
+
+    @Mock
+    private ListPermissionService permissionService;
 
     @Mock
     private ConversationStateService conversationState;
@@ -179,6 +184,59 @@ class ListViewServiceTest {
         final List<String> data = callbackData(capturedKeyboard());
         assertThat(data.stream().filter(d -> d.startsWith(ListViewService.DONE_PREFIX)).count()).isEqualTo(5);
         assertThat(data).contains(ListViewService.PAGE_PREFIX + list.getId() + ":0");
+    }
+
+    @Test
+    void show_showsCloseListButton_whenUserCanEdit() {
+        when(listService.getActiveById(list.getId())).thenReturn(Optional.of(list));
+        when(taskService.activeTasks(list.getId())).thenReturn(List.of(task("Milk", TaskStatus.TODO)));
+        when(permissionService.canEditList(user.getId(), list.getId())).thenReturn(true);
+
+        service.show(user, MESSAGE_ID, list.getId(), 0);
+
+        assertThat(callbackData(capturedKeyboard())).contains(CloseListService.START_PREFIX + list.getId());
+    }
+
+    @Test
+    void show_hidesCloseListButton_whenUserCannotEdit() {
+        when(listService.getActiveById(list.getId())).thenReturn(Optional.of(list));
+        when(taskService.activeTasks(list.getId())).thenReturn(List.of(task("Milk", TaskStatus.TODO)));
+        when(permissionService.canEditList(user.getId(), list.getId())).thenReturn(false);
+
+        service.show(user, MESSAGE_ID, list.getId(), 0);
+
+        assertThat(callbackData(capturedKeyboard())).doesNotContain(CloseListService.START_PREFIX + list.getId());
+    }
+
+    @Test
+    void show_rendersCompletedListReadOnly_withReopen_forEditor() {
+        list.setStatus(ListStatus.COMPLETED);
+        final Task milk = task("Milk", TaskStatus.TODO);
+        when(listService.getActiveById(list.getId())).thenReturn(Optional.of(list));
+        when(taskService.activeTasks(list.getId())).thenReturn(List.of(milk));
+        when(permissionService.canEditList(user.getId(), list.getId())).thenReturn(true);
+
+        service.show(user, MESSAGE_ID, list.getId(), 0);
+
+        final ArgumentCaptor<String> text = ArgumentCaptor.captor();
+        verify(gateway).editMarkdown(eq(CHAT_ID), eq(MESSAGE_ID), text.capture(), any());
+        assertThat(text.getValue()).contains("Completed").contains("Milk");
+
+        final List<String> data = callbackData(capturedKeyboard());
+        // Read-only: a 🔄 Reopen and Back, but no toggles, no save, no add/members.
+        assertThat(data).containsExactly(CloseListService.REOPEN_PREFIX + list.getId(), ListViewService.BACK);
+    }
+
+    @Test
+    void show_completedList_omitsReopen_forNonEditor() {
+        list.setStatus(ListStatus.COMPLETED);
+        when(listService.getActiveById(list.getId())).thenReturn(Optional.of(list));
+        when(taskService.activeTasks(list.getId())).thenReturn(List.of());
+        when(permissionService.canEditList(user.getId(), list.getId())).thenReturn(false);
+
+        service.show(user, MESSAGE_ID, list.getId(), 0);
+
+        assertThat(callbackData(capturedKeyboard())).containsExactly(ListViewService.BACK);
     }
 
     private List<Task> tasks(final int count) {
