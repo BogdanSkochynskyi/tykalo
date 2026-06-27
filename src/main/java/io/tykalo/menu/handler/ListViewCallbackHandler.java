@@ -1,5 +1,6 @@
 package io.tykalo.menu.handler;
 
+import io.tykalo.list.PendingItem;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskService;
 import io.tykalo.menu.AddItemsService;
@@ -20,11 +21,12 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 /**
  * Handles the list-view buttons (TK-183), claiming the {@code lv:} {@code callback_data} prefix:
  * {@code lv:done|undo:{task}:{page}} toggles an item and re-renders the same page in place,
- * {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen, {@code lv:add:{list}}
- * starts the add-items flow (TK-184), {@code lv:members:{list}} opens the Members screen (TK-194),
- * while {@code lv:more:{list}} is a placeholder until the more menu (TK-186) lands. Everything that edits the screen re-resolves the
- * clicking user from the chat and takes the message id from the callback. Non-{@code lv:} callbacks
- * are left unclaimed.
+ * {@code lv:save:{task}:{page}} saves an item for later (TK-256) — defers it to pending and drops it
+ * from the list — {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen,
+ * {@code lv:add:{list}} starts the add-items flow (TK-184), {@code lv:members:{list}} opens the Members
+ * screen (TK-194), while {@code lv:more:{list}} is a placeholder until the more menu (TK-186) lands.
+ * Everything that edits the screen re-resolves the clicking user from the chat and takes the message id
+ * from the callback. Non-{@code lv:} callbacks are left unclaimed.
  */
 @Component
 @RequiredArgsConstructor
@@ -74,6 +76,9 @@ public class ListViewCallbackHandler implements CallbackHandler {
                     .map("➕ Adding items to "::concat)
                     .or(() -> Optional.of("That list is no longer available."));
         }
+        if (data.startsWith(ListViewService.SAVE_PREFIX)) {
+            return saveForLater(data.substring(ListViewService.SAVE_PREFIX.length()), user.get(), messageId);
+        }
         if (data.startsWith(ListViewService.DONE_PREFIX)) {
             return toggle(data.substring(ListViewService.DONE_PREFIX.length()), user.get(), messageId, true);
         }
@@ -118,6 +123,27 @@ public class ListViewCallbackHandler implements CallbackHandler {
         final Optional<String> shown = listViewService.show(user, messageId, task.get().getListId(), page.get());
         return shown.isPresent() ? Optional.of(done ? "✅ Done" : "↩️ Reopened")
                 : Optional.of("That list is no longer available.");
+    }
+
+    private Optional<String> saveForLater(final String rest, final User user, final int messageId) {
+        final String[] parts = rest.split(":", 2);
+        if (parts.length < 2) {
+            return Optional.of(EXPIRED);
+        }
+        final UUID taskId = parseUuid(parts[0]);
+        final Optional<Integer> page = parseInt(parts[1]);
+        if (taskId == null || page.isEmpty()) {
+            return Optional.of(EXPIRED);
+        }
+        final Optional<Task> task = taskService.find(taskId);
+        if (task.isEmpty() || task.get().getArchivedAt() != null) {
+            return Optional.of("Task not found.");
+        }
+        final PendingItem pending = taskService.saveForLater(user.getId(), taskId);
+        final UUID listId = task.get().getListId();
+        final Optional<String> shown = listViewService.show(user, messageId, listId, page.get());
+        final String toast = "Saved '%s' for later. View in 📥 Pending".formatted(pending.getTitle());
+        return shown.isPresent() ? Optional.of(toast) : Optional.of("That list is no longer available.");
     }
 
     private Optional<String> paginate(final String rest, final User user, final int messageId) {

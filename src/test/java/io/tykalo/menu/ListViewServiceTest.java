@@ -115,6 +115,21 @@ class ListViewServiceTest {
     }
 
     @Test
+    void show_addsSaveForLaterButton_forTodoItemsOnly() {
+        final Task milk = task("Milk", TaskStatus.TODO);
+        final Task eggs = task("Eggs", TaskStatus.DONE);
+        when(listService.getActiveById(list.getId())).thenReturn(Optional.of(list));
+        when(taskService.activeTasks(list.getId())).thenReturn(List.of(milk, eggs));
+
+        service.show(user, MESSAGE_ID, list.getId(), 0);
+
+        final List<String> data = callbackData(capturedKeyboard());
+        // The actionable item gets a 📌 Save-for-later; the DONE item does not.
+        assertThat(data).contains(ListViewService.SAVE_PREFIX + milk.getId() + ":0");
+        assertThat(data).doesNotContain(ListViewService.SAVE_PREFIX + eggs.getId() + ":0");
+    }
+
+    @Test
     void show_returnsEmpty_andTouchesNothing_whenListIsGone() {
         when(listService.getActiveById(list.getId())).thenReturn(Optional.empty());
 

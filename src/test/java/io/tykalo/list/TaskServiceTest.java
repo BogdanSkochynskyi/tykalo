@@ -47,6 +47,9 @@ class TaskServiceTest {
     @Mock
     private ListPermissionService permissionService;
 
+    @Mock
+    private PendingItemService pendingItemService;
+
     @InjectMocks
     private TaskService taskService;
 
@@ -822,6 +825,79 @@ class TaskServiceTest {
         taskService.reopen(actor, id);
 
         assertThat(activityEvents()).isEmpty();
+    }
+
+    @Test
+    void saveForLater_defersToActorsBucket_archivesAndMarksDeferred_andAnnouncesChange() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        final PendingItem pending = PendingItem.defer(actor, "do something", task.getListId(), List.of(), id);
+        when(pendingItemService.defer(actor, "do something", task.getListId(), id)).thenReturn(pending);
+
+        // Act
+        final PendingItem result = taskService.saveForLater(actor, id);
+
+        // Assert
+        verify(permissionService).requireCanDeferItems(actor, task.getListId());
+        verify(pendingItemService).defer(actor, "do something", task.getListId(), id);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.DEFERRED);
+        assertThat(task.getArchivedAt()).isNotNull();
+        assertThat(result).isSameAs(pending);
+        verify(eventPublisher).publishEvent(new ListChangedEvent(task.getListId()));
+    }
+
+    @Test
+    void saveForLater_allowsAMemberWhoIsNotTheOwner_toDefer() {
+        // Arrange — a shared list owned by someone else; the acting member passes the MEMBER+ guard.
+        final UUID member = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        when(pendingItemService.defer(member, "do something", task.getListId(), id))
+                .thenReturn(PendingItem.defer(member, "do something", task.getListId(), List.of(), id));
+
+        // Act
+        taskService.saveForLater(member, id);
+
+        // Assert — the pending item is owned by the acting member, not the list owner.
+        assertThat(task.getOwnerId()).isNotEqualTo(member);
+        verify(pendingItemService).defer(member, "do something", task.getListId(), id);
+    }
+
+    @Test
+    void saveForLater_throws_andDefersNothing_whenPermissionDenied() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+        doThrow(new ListPermissionDeniedException(actor, task.getListId(), "defer item", null))
+                .when(permissionService).requireCanDeferItems(actor, task.getListId());
+
+        // Act + Assert
+        assertThatThrownBy(() -> taskService.saveForLater(actor, id))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        verify(pendingItemService, never()).defer(any(), any(), any(), any());
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.TODO);
+        assertThat(task.getArchivedAt()).isNull();
+    }
+
+    @Test
+    void saveForLater_throws_andDefersNothing_whenTaskAlreadyArchived() {
+        // Arrange — a replayed save on a task already deferred away.
+        final UUID actor = UUID.randomUUID();
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setArchivedAt(Instant.now());
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        // Act + Assert
+        assertThatThrownBy(() -> taskService.saveForLater(actor, id))
+                .isInstanceOf(IllegalStateException.class);
+        verify(pendingItemService, never()).defer(any(), any(), any(), any());
     }
 
     private ListActivityEvent captureActivity() {
