@@ -552,6 +552,74 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         assertThat(row).isEqualTo("ACTIVE|true");
     }
 
+    @Test
+    void flyway_appliesV20Migration_successfully() {
+        // Act
+        final Boolean success = jdbcClient
+                .sql("SELECT success FROM flyway_schema_history WHERE version = '20'")
+                .query(Boolean.class)
+                .single();
+
+        // Assert
+        assertThat(success).isTrue();
+    }
+
+    @Test
+    void pendingItemsTable_hasExpectedColumns() {
+        // Act
+        final List<String> columns = columnsOf("pending_items");
+
+        // Assert
+        assertThat(columns).containsExactlyInAnyOrder(
+                "id", "user_id", "title", "original_list_id", "original_list_tags",
+                "source_task_id", "deferred_at", "deferred_until");
+    }
+
+    @Test
+    void pendingItems_deferredAtDefaultsToNow_andTagsEmpty() {
+        // Arrange
+        final UUID userId = insertUser(8201L);
+        final UUID id = UUID.randomUUID();
+        jdbcClient.sql("INSERT INTO pending_items (id, user_id, title) VALUES (?, ?, 'Buy milk')")
+                .param(id).param(userId)
+                .update();
+
+        // Act
+        final var row = jdbcClient.sql(
+                        "SELECT deferred_at IS NOT NULL AS has_deferred, cardinality(original_list_tags) AS tag_count, "
+                                + "deferred_until IS NULL AS until_null FROM pending_items WHERE id = ?")
+                .param(id)
+                .query((rs, n) -> rs.getBoolean("has_deferred") + "|" + rs.getInt("tag_count")
+                        + "|" + rs.getBoolean("until_null"))
+                .single();
+
+        // Assert — deferred_at stamped, empty tags, no reminder
+        assertThat(row).isEqualTo("true|0|true");
+    }
+
+    @Test
+    void pendingItems_rejectMissingUser() {
+        // Act / Assert — FK to users(id) is enforced
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO pending_items (id, user_id, title) VALUES (?, ?, 'orphan')")
+                .param(UUID.randomUUID())
+                .param(UUID.randomUUID())
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void pendingItems_areIndexedOnUserDeferredAndTags() {
+        // Act
+        final List<String> indexes = jdbcClient
+                .sql("SELECT indexname FROM pg_indexes WHERE tablename = 'pending_items'")
+                .query(String.class)
+                .list();
+
+        // Assert
+        assertThat(indexes).contains("idx_pending_items_user_deferred", "idx_pending_items_tags");
+    }
+
     private void runLifecycleBackfill() {
         jdbcClient.sql("UPDATE lists SET status = 'ARCHIVED', closed_at = archived_at "
                         + "WHERE archived_at IS NOT NULL")
