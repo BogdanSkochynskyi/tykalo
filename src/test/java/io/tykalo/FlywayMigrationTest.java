@@ -150,7 +150,8 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
         // Assert
         assertThat(columns).containsExactlyInAnyOrder(
                 "id", "owner_id", "name", "type", "recurrence_rule",
-                "nudger_default_policy", "created_at", "archived_at");
+                "nudger_default_policy", "created_at", "archived_at",
+                "status", "closed_at", "tags", "auto_close");
     }
 
     @Test
@@ -450,6 +451,111 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
 
         // Assert
         assertThat(ownerMemberships(listId)).hasSize(1);
+    }
+
+    @Test
+    void flyway_appliesV19Migration_successfully() {
+        // Act
+        final Boolean success = jdbcClient
+                .sql("SELECT success FROM flyway_schema_history WHERE version = '19'")
+                .query(Boolean.class)
+                .single();
+
+        // Assert
+        assertThat(success).isTrue();
+    }
+
+    @Test
+    void lists_lifecycleColumnsHaveExpectedDefaults() {
+        // Arrange — a plain list (no archived_at), created the normal way
+        final UUID ownerId = insertUser(8101L);
+        final UUID listId = insertList(ownerId);
+
+        // Act
+        final var row = jdbcClient.sql(
+                        "SELECT status, auto_close, cardinality(tags) AS tag_count, "
+                                + "closed_at IS NULL AS closed_null FROM lists WHERE id = ?")
+                .param(listId)
+                .query((rs, n) -> rs.getString("status") + "|" + rs.getBoolean("auto_close")
+                        + "|" + rs.getInt("tag_count") + "|" + rs.getBoolean("closed_null"))
+                .single();
+
+        // Assert — ACTIVE, auto_close false, empty tags, closed_at null
+        assertThat(row).isEqualTo("ACTIVE|false|0|true");
+    }
+
+    @Test
+    void lists_rejectInvalidStatus() {
+        // Arrange
+        final UUID ownerId = insertUser(8102L);
+
+        // Act / Assert — CHECK (status IN ('ACTIVE','COMPLETED','ARCHIVED'))
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO lists (id, owner_id, name, type, nudger_default_policy, status) "
+                        + "VALUES (?, ?, 'L', 'INBOX', 'OFF', 'BOGUS')")
+                .param(UUID.randomUUID())
+                .param(ownerId)
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void lists_areIndexedOnTagsAndStatusOwner() {
+        // Act
+        final List<String> indexes = jdbcClient
+                .sql("SELECT indexname FROM pg_indexes WHERE tablename = 'lists'")
+                .query(String.class)
+                .list();
+
+        // Assert
+        assertThat(indexes).contains("idx_lists_tags", "idx_lists_status_owner");
+    }
+
+    @Test
+    void lifecycleBackfill_archivedListBecomesArchived_withClosedAtFromArchivedAt() {
+        // Arrange — a list soft-deleted the pre-TK-251 way: archived_at set, status still at the
+        // ACTIVE default (a fresh test DB ran the migration before this row existed)
+        final UUID ownerId = insertUser(8103L);
+        final UUID listId = UUID.randomUUID();
+        jdbcClient.sql("INSERT INTO lists (id, owner_id, name, type, nudger_default_policy, archived_at) "
+                        + "VALUES (?, ?, 'Old', 'CHECKLIST', 'OFF', now())")
+                .param(listId).param(ownerId)
+                .update();
+
+        // Act — re-run the V19 backfill statement against the synthetic row
+        runLifecycleBackfill();
+
+        // Assert — flipped to ARCHIVED with closed_at mirroring archived_at
+        final var row = jdbcClient.sql(
+                        "SELECT status, closed_at = archived_at AS closed_matches FROM lists WHERE id = ?")
+                .param(listId)
+                .query((rs, n) -> rs.getString("status") + "|" + rs.getBoolean("closed_matches"))
+                .single();
+        assertThat(row).isEqualTo("ARCHIVED|true");
+    }
+
+    @Test
+    void lifecycleBackfill_leavesNonArchivedListsActive() {
+        // Arrange — a normal list, no archived_at
+        final UUID ownerId = insertUser(8104L);
+        final UUID listId = insertList(ownerId);
+
+        // Act
+        runLifecycleBackfill();
+
+        // Assert — untouched: still ACTIVE with no closed_at
+        final var row = jdbcClient.sql(
+                        "SELECT status, closed_at IS NULL AS closed_null FROM lists WHERE id = ?")
+                .param(listId)
+                .query((rs, n) -> rs.getString("status") + "|" + rs.getBoolean("closed_null"))
+                .single();
+        assertThat(row).isEqualTo("ACTIVE|true");
+    }
+
+    private void runLifecycleBackfill() {
+        jdbcClient.sql("UPDATE lists SET status = 'ARCHIVED', closed_at = archived_at "
+                        + "WHERE archived_at IS NOT NULL")
+                .update();
     }
 
     private void runBackfill() {
