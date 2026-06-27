@@ -48,6 +48,12 @@ public class ListPermissionService {
         return hasRole(userId, listId, ANY_ROLE);
     }
 
+    /** Whether the user may save an item for later (defer it to pending) — any role. */
+    @Transactional(readOnly = true)
+    public boolean canDeferItems(final UUID userId, final UUID listId) {
+        return hasRole(userId, listId, ANY_ROLE);
+    }
+
     /** Whether the user may edit the list itself (rename, change type, archive) — OWNER or EDITOR. */
     @Transactional(readOnly = true)
     public boolean canEditList(final UUID userId, final UUID listId) {
@@ -82,6 +88,12 @@ public class ListPermissionService {
     @Transactional(readOnly = true)
     public void requireCanToggleItems(final UUID userId, final UUID listId) {
         require(canToggleItems(userId, listId), userId, listId, "toggle items");
+    }
+
+    /** Asserts {@link #canDeferItems}; throws {@link ListPermissionDeniedException} otherwise. */
+    @Transactional(readOnly = true)
+    public void requireCanDeferItems(final UUID userId, final UUID listId) {
+        require(canDeferItems(userId, listId), userId, listId, "defer item");
     }
 
     /** Asserts {@link #canEditList}; throws {@link ListPermissionDeniedException} otherwise. */

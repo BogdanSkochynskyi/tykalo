@@ -25,9 +25,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 /**
  * Renders the list view (TK-183) — the primary working screen for a single list. The header is the
  * list's type icon and name; the body lists its live items with a ✅/☐ indicator, paged at
- * {@link #PAGE_SIZE}; the keyboard is one toggle button per item (two per row) plus action, settings
- * and navigation rows. Showing it edits the navigable menu message in place and sets the user's
- * {@link ConversationState} to {@link ConversationState.ListView}.
+ * {@link #PAGE_SIZE}; the keyboard is one row per item — its toggle button plus, for a still-actionable
+ * item, a 📌 Save-for-later button (TK-256) — followed by action, settings and navigation rows. Showing
+ * it edits the navigable menu message in place and sets the user's {@link ConversationState} to
+ * {@link ConversationState.ListView}.
  *
  * <p>Toggling carries the current page in its {@code callback_data} ({@code lv:done|undo:{task}:{page}})
  * so the view re-renders the same page in place — see {@link io.tykalo.menu.handler.ListViewCallbackHandler}.
@@ -42,6 +43,7 @@ public class ListViewService {
 
     public static final String DONE_PREFIX = "lv:done:";
     public static final String UNDO_PREFIX = "lv:undo:";
+    public static final String SAVE_PREFIX = "lv:save:";
     public static final String PAGE_PREFIX = "lv:page:";
     public static final String ADD_PREFIX = "lv:add:";
     public static final String MEMBERS_PREFIX = "lv:members:";
@@ -116,16 +118,8 @@ public class ListViewService {
         final UUID listId = Objects.requireNonNull(list.getId());
         final List<InlineKeyboardRow> rows = new ArrayList<>();
 
-        InlineKeyboardRow current = new InlineKeyboardRow();
         for (final Task task : tasks) {
-            current.add(toggleButton(task, page));
-            if (current.size() == 2) {
-                rows.add(current);
-                current = new InlineKeyboardRow();
-            }
-        }
-        if (!current.isEmpty()) {
-            rows.add(current);
+            rows.add(taskRow(task, page));
         }
         if (pageCount > 1) {
             rows.add(paginationRow(listId, page, pageCount));
@@ -136,8 +130,21 @@ public class ListViewService {
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }
 
-    private InlineKeyboardButton toggleButton(final Task task, final int page) {
+    /**
+     * One row per task: the toggle button spanning the row, and — for a still-actionable (TODO) item —
+     * a {@code 📌} Save-for-later button (TK-256). A DONE item gets no 📌: deferring a completed task is
+     * meaningless, so its row is just the toggle.
+     */
+    private InlineKeyboardRow taskRow(final Task task, final int page) {
         final UUID id = Objects.requireNonNull(task.getId(), "task must be persisted before rendering");
+        final InlineKeyboardRow row = row(toggleButton(task, id, page));
+        if (task.getStatus() != TaskStatus.DONE) {
+            row.add(button("📌", SAVE_PREFIX + id + ":" + page));
+        }
+        return row;
+    }
+
+    private InlineKeyboardButton toggleButton(final Task task, final UUID id, final int page) {
         final String label = "%s %s".formatted(indicator(task), truncate(task.getTitle()));
         final String action = task.getStatus() == TaskStatus.DONE ? UNDO_PREFIX : DONE_PREFIX;
         return button(label, action + id + ":" + page);

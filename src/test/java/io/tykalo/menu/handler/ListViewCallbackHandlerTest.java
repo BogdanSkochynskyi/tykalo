@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.tykalo.list.ListType;
+import io.tykalo.list.PendingItem;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
@@ -117,6 +118,36 @@ class ListViewCallbackHandlerTest {
         assertThat(handler.handle(callbackOnMessage(ListViewService.DONE_PREFIX + taskId + ":0")))
                 .get().asString().contains("not found");
         verify(taskService, never()).markDone(user.getId(), taskId);
+    }
+
+    @Test
+    void save_defersTheTask_reRendersSamePage_andToastsWithPendingHint() {
+        stubUser();
+        final Task milk = task(TaskStatus.TODO);
+        final java.util.List<String> noTags = java.util.List.of();
+        when(taskService.find(milk.getId())).thenReturn(Optional.of(milk));
+        when(taskService.saveForLater(user.getId(), milk.getId()))
+                .thenReturn(PendingItem.defer(user.getId(), "Milk", list.getId(), noTags, milk.getId()));
+        when(listViewService.show(user, MESSAGE_ID, list.getId(), 1)).thenReturn(Optional.of("Groceries"));
+
+        final Optional<String> toast =
+                handler.handle(callbackOnMessage(ListViewService.SAVE_PREFIX + milk.getId() + ":1"));
+
+        assertThat(toast).get().asString().contains("Saved 'Milk' for later").contains("📥 Pending");
+        verify(taskService).saveForLater(user.getId(), milk.getId());
+        verify(listViewService).show(user, MESSAGE_ID, list.getId(), 1);
+    }
+
+    @Test
+    void save_reportsTaskNotFound_andDoesNotDefer_whenAlreadyArchived() {
+        stubUser();
+        final Task milk = task(TaskStatus.DEFERRED);
+        milk.setArchivedAt(java.time.Instant.now());
+        when(taskService.find(milk.getId())).thenReturn(Optional.of(milk));
+
+        assertThat(handler.handle(callbackOnMessage(ListViewService.SAVE_PREFIX + milk.getId() + ":0")))
+                .get().asString().contains("not found");
+        verify(taskService, never()).saveForLater(user.getId(), milk.getId());
     }
 
     @Test

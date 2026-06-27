@@ -32,6 +32,7 @@ public class TaskService {
     private final RecurrenceCalculator recurrenceCalculator;
     private final ApplicationEventPublisher eventPublisher;
     private final ListPermissionService permissionService;
+    private final PendingItemService pendingItemService;
 
     /**
      * Adds an item on behalf of {@code actorId}, enforcing the add-items permission at the boundary
@@ -77,6 +78,33 @@ public class TaskService {
     public TaskToggle reopen(final UUID actorId, final UUID taskId) {
         permissionService.requireCanToggleItems(actorId, require(taskId).getListId());
         return reopen(taskId);
+    }
+
+    /**
+     * Saves a task "for later" on behalf of {@code actorId} (TK-256): defers the task into
+     * {@code actorId}'s personal {@code pending_items} bucket — carrying the source list's tags for
+     * later tag matching (TK-258) — then marks the task {@link TaskStatus#DEFERRED} and stamps
+     * {@code archivedAt}, which removes it from the list's active items (every active-task query filters
+     * {@code archivedAt IS NULL}). Permission is enforced at the boundary (MEMBER+, TK-192); a live
+     * re-render is announced so the item disappears for every member.
+     *
+     * <p>Idempotent against replays: a task already archived is left untouched and no second pending
+     * item is created. Returns the created {@link PendingItem} so the caller can name it in its reply.
+     */
+    @Transactional
+    public PendingItem saveForLater(final UUID actorId, final UUID taskId) {
+        final Task task = require(taskId);
+        permissionService.requireCanDeferItems(actorId, task.getListId());
+        if (task.getArchivedAt() != null) {
+            throw new IllegalStateException("Task is no longer active: " + taskId);
+        }
+        final PendingItem pending =
+                pendingItemService.defer(actorId, task.getTitle(), task.getListId(), taskId);
+        task.setStatus(TaskStatus.DEFERRED);
+        task.setArchivedAt(Instant.now());
+        log.info("Saved task id={} for later (pending {}) by actor={}", taskId, pending.getId(), actorId);
+        announceChange(task.getListId());
+        return pending;
     }
 
     @Transactional

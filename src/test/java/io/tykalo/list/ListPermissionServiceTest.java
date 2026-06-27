@@ -45,6 +45,7 @@ class ListPermissionServiceTest {
         assertThat(service.canView(USER, LIST)).isTrue();
         assertThat(service.canAddItems(USER, LIST)).isTrue();
         assertThat(service.canToggleItems(USER, LIST)).isTrue();
+        assertThat(service.canDeferItems(USER, LIST)).isTrue();
         assertThat(service.canEditList(USER, LIST)).isTrue();
         assertThat(service.canManageMembers(USER, LIST)).isTrue();
         assertThat(service.canDeleteList(USER, LIST)).isTrue();
@@ -58,6 +59,7 @@ class ListPermissionServiceTest {
         assertThat(service.canView(USER, LIST)).isTrue();
         assertThat(service.canAddItems(USER, LIST)).isTrue();
         assertThat(service.canToggleItems(USER, LIST)).isTrue();
+        assertThat(service.canDeferItems(USER, LIST)).isTrue();
         assertThat(service.canEditList(USER, LIST)).isTrue();
         assertThat(service.canManageMembers(USER, LIST)).isTrue();
         assertThat(service.canDeleteList(USER, LIST)).isFalse();
@@ -71,6 +73,7 @@ class ListPermissionServiceTest {
         assertThat(service.canView(USER, LIST)).isTrue();
         assertThat(service.canAddItems(USER, LIST)).isTrue();
         assertThat(service.canToggleItems(USER, LIST)).isTrue();
+        assertThat(service.canDeferItems(USER, LIST)).isTrue();
         assertThat(service.canEditList(USER, LIST)).isFalse();
         assertThat(service.canManageMembers(USER, LIST)).isFalse();
         assertThat(service.canDeleteList(USER, LIST)).isFalse();
@@ -82,8 +85,9 @@ class ListPermissionServiceTest {
         noMembership();
 
         for (final BiPredicate<UUID, UUID> check : java.util.List.<BiPredicate<UUID, UUID>>of(
-                service::canView, service::canAddItems, service::canToggleItems, service::canEditList,
-                service::canManageMembers, service::canDeleteList, service::canTransferOwnership)) {
+                service::canView, service::canAddItems, service::canToggleItems, service::canDeferItems,
+                service::canEditList, service::canManageMembers, service::canDeleteList,
+                service::canTransferOwnership)) {
             assertThat(check.test(USER, LIST)).isFalse();
         }
     }

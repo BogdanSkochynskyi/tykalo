@@ -223,6 +223,30 @@ class FlywayMigrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void tasks_acceptDeferredStatus_butRejectUnknownStatus() {
+        // Arrange — V21 widened the status CHECK to admit DEFERRED ("save for later", TK-256).
+        final UUID ownerId = insertUser(4104L);
+        final UUID listId = insertList(ownerId);
+        final UUID taskId = UUID.randomUUID();
+
+        // Act / Assert — DEFERRED is accepted
+        jdbcClient.sql("INSERT INTO tasks (id, list_id, owner_id, title, status) "
+                        + "VALUES (?, ?, ?, 'Later', 'DEFERRED')")
+                .param(taskId).param(listId).param(ownerId)
+                .update();
+        assertThat(jdbcClient.sql("SELECT status FROM tasks WHERE id = ?")
+                .param(taskId).query(String.class).single()).isEqualTo("DEFERRED");
+
+        // Act / Assert — an unknown status is still rejected by the CHECK
+        assertThatThrownBy(() -> jdbcClient
+                .sql("INSERT INTO tasks (id, list_id, owner_id, title, status) "
+                        + "VALUES (?, ?, ?, 'Bogus', 'BOGUS')")
+                .param(UUID.randomUUID()).param(listId).param(ownerId)
+                .update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void tasks_rejectMissingList() {
         // Arrange
         final UUID ownerId = insertUser(5005L);
