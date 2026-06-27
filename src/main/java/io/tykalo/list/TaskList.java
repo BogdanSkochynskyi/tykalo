@@ -10,6 +10,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
@@ -17,6 +19,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,6 +65,21 @@ public class TaskList {
 
     @Column(name = "archived_at")
     private @Nullable Instant archivedAt;
+
+    // Lifecycle (TK-251). The state machine transitions live in the service layer (TK-252).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 16)
+    private ListStatus status = ListStatus.ACTIVE;
+
+    @Column(name = "closed_at")
+    private @Nullable Instant closedAt;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "tags", nullable = false, columnDefinition = "text[]")
+    private List<String> tags = new ArrayList<>();
+
+    @Column(name = "auto_close", nullable = false)
+    private boolean autoClose = false;
 
     /** Creates a CHECKLIST (Nudgers off). */
     public static TaskList checklist(final User owner, final String name) {
