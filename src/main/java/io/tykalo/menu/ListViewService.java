@@ -1,7 +1,9 @@
 package io.tykalo.menu;
 
+import io.tykalo.list.ListPermissionService;
 import io.tykalo.list.ListRenderer;
 import io.tykalo.list.ListService;
+import io.tykalo.list.ListStatus;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
@@ -55,6 +57,7 @@ public class ListViewService {
 
     private final ListService listService;
     private final TaskService taskService;
+    private final ListPermissionService permissionService;
     private final ConversationStateService conversationState;
     private final TelegramMessageGateway gateway;
 
@@ -83,23 +86,28 @@ public class ListViewService {
             return Optional.empty();
         }
         conversationState.setState(user.getId(), new ConversationState.ListView(listId));
-        final Screen screen = render(list.get(), page);
+        final boolean canEdit = permissionService.canEditList(user.getId(), listId);
+        final Screen screen = render(list.get(), page, canEdit);
         gateway.editMarkdown(user.getTgChatId(), messageId, screen.text(), screen.keyboard());
         log.debug("Showed list view list={} page={} to user id={}", listId, page, user.getId());
         return Optional.of(list.get().getName());
     }
 
-    private Screen render(final TaskList list, final int requestedPage) {
+    private Screen render(final TaskList list, final int requestedPage, final boolean canEdit) {
         final List<Task> tasks = taskService.activeTasks(Objects.requireNonNull(list.getId()));
         final int pageCount = Math.max(1, (tasks.size() + PAGE_SIZE - 1) / PAGE_SIZE);
         final int page = Math.clamp(requestedPage, 0, pageCount - 1);
         final int from = page * PAGE_SIZE;
         final List<Task> pageTasks = tasks.subList(from, Math.min(from + PAGE_SIZE, tasks.size()));
-        return new Screen(body(list, pageTasks, page, pageCount), keyboard(list, pageTasks, page, pageCount));
+        return new Screen(body(list, pageTasks, page, pageCount),
+                keyboard(list, pageTasks, page, pageCount, canEdit));
     }
 
     private String body(final TaskList list, final List<Task> tasks, final int page, final int pageCount) {
         final StringBuilder out = new StringBuilder("%s %s\n".formatted(ListIcons.of(list.getType()), list.getName()));
+        if (list.getStatus() == ListStatus.COMPLETED) {
+            out.append("✅ Completed — read-only. Reopen to make changes.\n");
+        }
         if (tasks.isEmpty()) {
             out.append("\nNo items yet. Tap ➕ Add items to start.");
         } else {
@@ -114,10 +122,12 @@ public class ListViewService {
     }
 
     private InlineKeyboardMarkup keyboard(final TaskList list, final List<Task> tasks,
-                                          final int page, final int pageCount) {
+                                          final int page, final int pageCount, final boolean canEdit) {
         final UUID listId = Objects.requireNonNull(list.getId());
+        if (list.getStatus() == ListStatus.COMPLETED) {
+            return completedKeyboard(listId, page, pageCount, canEdit);
+        }
         final List<InlineKeyboardRow> rows = new ArrayList<>();
-
         for (final Task task : tasks) {
             rows.add(taskRow(task, page));
         }
@@ -126,6 +136,26 @@ public class ListViewService {
         }
         rows.add(row(button("➕ Add items", ADD_PREFIX + listId)));
         rows.add(row(button("👥 Members", MEMBERS_PREFIX + listId), button("⋯ More", MORE_PREFIX + listId)));
+        if (canEdit) {
+            rows.add(row(button("🏁 Close list", CloseListService.START_PREFIX + listId)));
+        }
+        rows.add(row(button("⬅️ Back to lists", BACK)));
+        return InlineKeyboardMarkup.builder().keyboard(rows).build();
+    }
+
+    /**
+     * The keyboard for a COMPLETED list (TK-254): read-only — no per-item toggles, no add/members — with
+     * just paging, a {@code 🔄 Reopen} for editors, and Back. Items are still shown in the body.
+     */
+    private InlineKeyboardMarkup completedKeyboard(final UUID listId, final int page, final int pageCount,
+                                                   final boolean canEdit) {
+        final List<InlineKeyboardRow> rows = new ArrayList<>();
+        if (pageCount > 1) {
+            rows.add(paginationRow(listId, page, pageCount));
+        }
+        if (canEdit) {
+            rows.add(row(button("🔄 Reopen", CloseListService.REOPEN_PREFIX + listId)));
+        }
         rows.add(row(button("⬅️ Back to lists", BACK)));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }

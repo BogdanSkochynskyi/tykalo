@@ -39,6 +39,8 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.InvitingMember.class, name = "INVITING_MEMBER"),
         @JsonSubTypes.Type(value = ConversationState.MembersScreen.class, name = "MEMBERS_SCREEN"),
         @JsonSubTypes.Type(value = ConversationState.Settings.class, name = "SETTINGS"),
+        @JsonSubTypes.Type(value = ConversationState.ClosingList.class, name = "CLOSING_LIST"),
+        @JsonSubTypes.Type(value = ConversationState.ClosingListTarget.class, name = "CLOSING_LIST_TARGET"),
 })
 public sealed interface ConversationState {
 
@@ -133,5 +135,21 @@ public sealed interface ConversationState {
 
     /** The settings screen (TK-196) — navigation only (notification preference radio buttons). */
     record Settings() implements ConversationState {
+    }
+
+    /**
+     * The close-list screen of a list (TK-254) — navigation only. The all-done confirmation, the
+     * unfinished-items options screen and the drop confirmation all share this state; the chosen path
+     * advances via inline buttons carrying the list id.
+     */
+    record ClosingList(UUID listId) implements ConversationState {
+    }
+
+    /**
+     * The "move unfinished items to another list" picker reached from the close-list options (TK-254) —
+     * navigation only. Carries the id of the list being closed; the picked target id travels in the
+     * button's {@code callback_data}.
+     */
+    record ClosingListTarget(UUID listId) implements ConversationState {
     }
 }
