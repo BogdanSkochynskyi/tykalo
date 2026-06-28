@@ -172,6 +172,7 @@ public class TaskService {
         task.setStatus(TaskStatus.DONE);
         log.info("Completed task id={}", taskId);
         expandRecurrence(task);
+        announceCompleted(task);
         announceChange(task.getListId());
         return task;
     }
@@ -189,6 +190,7 @@ public class TaskService {
             task.setStatus(TaskStatus.DONE);
             log.info("Marked task done id={}", taskId);
             expandRecurrence(task);
+            announceCompleted(task);
             announceChange(task.getListId());
         }
         return new TaskToggle(task, changed);
@@ -395,6 +397,15 @@ public class TaskService {
      */
     private void announceChange(final UUID listId) {
         eventPublisher.publishEvent(new ListChangedEvent(listId));
+    }
+
+    /**
+     * Announces that a task just transitioned to DONE so the auto-close detector (TK-253) can check
+     * whether the list is now fully complete. Fired after {@link #expandRecurrence}, so a recurring
+     * task's freshly spawned next instance is already counted (and rightly blocks an auto-close).
+     */
+    private void announceCompleted(final Task task) {
+        eventPublisher.publishEvent(new TaskCompletedEvent(task.getListId(), task.getId()));
     }
 
     /**

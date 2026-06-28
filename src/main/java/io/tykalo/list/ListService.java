@@ -118,6 +118,21 @@ public class ListService {
     }
 
     /**
+     * Toggles a list's {@code auto_close} setting (TK-253) on behalf of {@code actorId}, enforcing the
+     * edit-list permission at the boundary (OWNER/EDITOR, TK-192). When on, the auto-close detector closes
+     * the list silently once every item is done; when off, it instead prompts. Returns the updated list.
+     */
+    @Transactional
+    public TaskList setAutoClose(final UUID actorId, final UUID listId, final boolean autoClose) {
+        permissionService.requireCanEditList(actorId, listId);
+        final TaskList list = listRepository.findById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
+        list.setAutoClose(autoClose);
+        log.info("Set auto-close of list id={} to {} by actor={}", listId, autoClose, actorId);
+        return list;
+    }
+
+    /**
      * Deletes a list on behalf of {@code actorId}, enforcing the OWNER-only permission at the
      * boundary (TK-192) before delegating to {@link #deleteList(UUID)}. Throws
      * {@link ListPermissionDeniedException} if the actor may not delete the list.
