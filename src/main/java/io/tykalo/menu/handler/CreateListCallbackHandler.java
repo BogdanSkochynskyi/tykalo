@@ -53,10 +53,20 @@ public class CreateListCallbackHandler implements CallbackHandler {
         if (data.equals(CreateListService.CANCEL)) {
             return createListService.cancel(user.get(), messageId);
         }
+        if (data.equals(CreateListService.SKIP_TAGS)) {
+            return skipTags(user.get());
+        }
         if (data.startsWith(CreateListService.TYPE_PREFIX)) {
             return chooseType(user.get(), messageId, data.substring(CreateListService.TYPE_PREFIX.length()));
         }
         return Optional.empty();
+    }
+
+    private Optional<String> skipTags(final User user) {
+        if (!(conversationState.getState(user.getId()) instanceof ConversationState.CreatingListTags tags)) {
+            return Optional.of("This create session has ended.");
+        }
+        return createListService.skipTags(user, tags);
     }
 
     private Optional<String> chooseType(final User user, final int messageId, final String raw) {
