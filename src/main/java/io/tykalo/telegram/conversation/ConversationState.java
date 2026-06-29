@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.tykalo.list.ListMemberRole;
 import io.tykalo.list.ListType;
 import io.tykalo.menu.HelpTopic;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -43,6 +44,8 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.ClosingListTarget.class, name = "CLOSING_LIST_TARGET"),
         @JsonSubTypes.Type(value = ConversationState.EditingListTags.class, name = "EDITING_LIST_TAGS"),
         @JsonSubTypes.Type(value = ConversationState.AddingTag.class, name = "ADDING_TAG"),
+        @JsonSubTypes.Type(value = ConversationState.CreatingListTags.class, name = "CREATING_LIST_TAGS"),
+        @JsonSubTypes.Type(value = ConversationState.CreatingListPendingCheck.class, name = "CREATING_LIST_PENDING_CHECK"),
 })
 public sealed interface ConversationState {
 
@@ -172,5 +175,27 @@ public sealed interface ConversationState {
         public boolean expectsTextInput() {
             return true;
         }
+    }
+
+    /**
+     * Step 3 of the new-list flow (TK-258) — typing optional tags for the not-yet-created list, consuming
+     * plain-text input. Carries the chosen {@code type} and validated {@code name} so the list is created
+     * only once the tags are settled (a cancel here leaves no orphan list), plus the id of the prompt
+     * message so the submitted tags (or a validation notice) re-render it in place.
+     */
+    record CreatingListTags(ListType type, String name, int promptMessageId) implements ConversationState {
+        @Override
+        public boolean expectsTextInput() {
+            return true;
+        }
+    }
+
+    /**
+     * The "add matching pending items?" screen shown right after a tagged list is created (TK-258) —
+     * navigation only (checkbox toggles plus add/drop/skip). Carries the new list's id and the currently
+     * selected pending-item ids; the candidate items themselves are re-derived each render from the list's
+     * tags, so {@code selectedIds} only needs to remember the selection (by id) across re-renders.
+     */
+    record CreatingListPendingCheck(UUID newListId, List<UUID> selectedIds) implements ConversationState {
     }
 }

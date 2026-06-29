@@ -1,6 +1,7 @@
 package io.tykalo.menu.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -94,6 +95,26 @@ class CreateListCallbackHandlerTest {
 
         assertThat(toast).get().asString().contains("Cancelled");
         verify(createListService).cancel(user, MESSAGE_ID);
+    }
+
+    @Test
+    void skipTags_createsTheListWithoutTags_whenInTheTagsState() {
+        final var tagsState = new ConversationState.CreatingListTags(ListType.CHECKLIST, "Groceries", MESSAGE_ID);
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+        when(conversationState.getState(user.getId())).thenReturn(tagsState);
+
+        handler.handle(callbackOnMessage(CreateListService.SKIP_TAGS));
+
+        verify(createListService).skipTags(user, tagsState);
+    }
+
+    @Test
+    void skipTags_isANoOp_whenTheFlowHasMovedOn() {
+        when(userRepository.findByTgChatId(CHAT_ID)).thenReturn(Optional.of(user));
+        when(conversationState.getState(user.getId())).thenReturn(new ConversationState.MainMenu());
+
+        assertThat(handler.handle(callbackOnMessage(CreateListService.SKIP_TAGS))).get().asString().contains("ended");
+        verify(createListService, never()).skipTags(any(), any());
     }
 
     @Test

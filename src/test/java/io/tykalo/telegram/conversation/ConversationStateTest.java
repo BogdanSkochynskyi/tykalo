@@ -9,6 +9,8 @@ import io.tykalo.telegram.conversation.ConversationState.AddingItems;
 import io.tykalo.telegram.conversation.ConversationState.ClosingList;
 import io.tykalo.telegram.conversation.ConversationState.ClosingListTarget;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListName;
+import io.tykalo.telegram.conversation.ConversationState.CreatingListPendingCheck;
+import io.tykalo.telegram.conversation.ConversationState.CreatingListTags;
 import io.tykalo.telegram.conversation.ConversationState.AddingTag;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListType;
 import io.tykalo.telegram.conversation.ConversationState.EditingListTags;
@@ -48,7 +50,9 @@ class ConversationStateTest {
                 new ClosingList(listId),
                 new ClosingListTarget(listId),
                 new EditingListTags(listId),
-                new AddingTag(listId, 13));
+                new AddingTag(listId, 13),
+                new CreatingListTags(ListType.CHECKLIST, "Groceries", 7),
+                new CreatingListPendingCheck(listId, List.of(UUID.randomUUID(), UUID.randomUUID())));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -86,6 +90,7 @@ class ConversationStateTest {
         assertThat(new CreatingListName(ListType.INBOX, 1).expectsTextInput()).isTrue();
         assertThat(new RenamingList(listId).expectsTextInput()).isTrue();
         assertThat(new AddingTag(listId, 13).expectsTextInput()).isTrue();
+        assertThat(new CreatingListTags(ListType.CHECKLIST, "Groceries", 7).expectsTextInput()).isTrue();
 
         assertThat(new Idle().expectsTextInput()).isFalse();
         assertThat(new MainMenu().expectsTextInput()).isFalse();
@@ -99,5 +104,6 @@ class ConversationStateTest {
         assertThat(new ClosingList(listId).expectsTextInput()).isFalse();
         assertThat(new ClosingListTarget(listId).expectsTextInput()).isFalse();
         assertThat(new EditingListTags(listId).expectsTextInput()).isFalse();
+        assertThat(new CreatingListPendingCheck(listId, List.of()).expectsTextInput()).isFalse();
     }
 }
