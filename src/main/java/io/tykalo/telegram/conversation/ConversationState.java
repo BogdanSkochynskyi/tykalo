@@ -41,6 +41,8 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = ConversationState.Settings.class, name = "SETTINGS"),
         @JsonSubTypes.Type(value = ConversationState.ClosingList.class, name = "CLOSING_LIST"),
         @JsonSubTypes.Type(value = ConversationState.ClosingListTarget.class, name = "CLOSING_LIST_TARGET"),
+        @JsonSubTypes.Type(value = ConversationState.EditingListTags.class, name = "EDITING_LIST_TAGS"),
+        @JsonSubTypes.Type(value = ConversationState.AddingTag.class, name = "ADDING_TAG"),
 })
 public sealed interface ConversationState {
 
@@ -151,5 +153,24 @@ public sealed interface ConversationState {
      * button's {@code callback_data}.
      */
     record ClosingListTarget(UUID listId) implements ConversationState {
+    }
+
+    /**
+     * The tags screen of a list (TK-259) — navigation only (remove a tag, quick-add a suggestion, or
+     * enter the add-tag prompt). Reached from the per-list settings screen.
+     */
+    record EditingListTags(UUID listId) implements ConversationState {
+    }
+
+    /**
+     * Typing a custom tag to add to a list (TK-259) — consumes plain-text input. Carries the id of the
+     * tags-screen message so the submitted tag (or a validation notice) re-renders it in place, mirroring
+     * {@link InvitingMember}.
+     */
+    record AddingTag(UUID listId, int messageId) implements ConversationState {
+        @Override
+        public boolean expectsTextInput() {
+            return true;
+        }
     }
 }

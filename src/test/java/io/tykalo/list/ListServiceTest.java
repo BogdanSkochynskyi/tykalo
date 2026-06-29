@@ -235,6 +235,77 @@ class ListServiceTest {
     }
 
     @Test
+    void addTag_checksEditPermission_andAppendsTheTag() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Groceries");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        // Act
+        final TaskList result = listService.addTag(actor, list.getId(), "shopping");
+
+        // Assert
+        verify(permissionService).requireCanEditList(actor, list.getId());
+        assertThat(result.getTags()).containsExactly("shopping");
+    }
+
+    @Test
+    void addTag_isIdempotent_whenTagAlreadyPresent() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Groceries");
+        list.getTags().add("shopping");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        // Act
+        final TaskList result = listService.addTag(actor, list.getId(), "shopping");
+
+        // Assert
+        assertThat(result.getTags()).containsExactly("shopping");
+    }
+
+    @Test
+    void addTag_throws_andDoesNotTouchList_whenPermissionDenied() {
+        final UUID actor = UUID.randomUUID();
+        final UUID listId = UUID.randomUUID();
+        doThrow(new ListPermissionDeniedException(actor, listId, "edit list", ListMemberRole.MEMBER))
+                .when(permissionService).requireCanEditList(actor, listId);
+
+        assertThatThrownBy(() -> listService.addTag(actor, listId, "shopping"))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        verify(listRepository, never()).findById(any());
+    }
+
+    @Test
+    void removeTag_checksEditPermission_andDropsTheTag() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Groceries");
+        list.getTags().add("shopping");
+        list.getTags().add("home");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        // Act
+        final TaskList result = listService.removeTag(actor, list.getId(), "shopping");
+
+        // Assert
+        verify(permissionService).requireCanEditList(actor, list.getId());
+        assertThat(result.getTags()).containsExactly("home");
+    }
+
+    @Test
+    void removeTag_isNoOp_whenTagAbsent() {
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Groceries");
+        list.getTags().add("home");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        final TaskList result = listService.removeTag(actor, list.getId(), "shopping");
+
+        assertThat(result.getTags()).containsExactly("home");
+    }
+
+    @Test
     void findAllAccessibleLists_unionsOwnedAndMemberLists_excludingArchivedMemberLists() {
         // Arrange
         final UUID userId = UUID.randomUUID();
