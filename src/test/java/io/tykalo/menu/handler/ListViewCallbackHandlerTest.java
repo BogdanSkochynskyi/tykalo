@@ -13,6 +13,7 @@ import io.tykalo.list.TaskList;
 import io.tykalo.list.TaskService;
 import io.tykalo.list.TaskStatus;
 import io.tykalo.menu.AddItemsService;
+import io.tykalo.menu.ListSettingsService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MembersService;
 import io.tykalo.menu.MyListsService;
@@ -54,6 +55,9 @@ class ListViewCallbackHandlerTest {
 
     @Mock
     private MembersService membersService;
+
+    @Mock
+    private ListSettingsService listSettingsService;
 
     @InjectMocks
     private ListViewCallbackHandler handler;
@@ -194,9 +198,24 @@ class ListViewCallbackHandlerTest {
     }
 
     @Test
-    void more_isAStub() {
+    void more_opensTheSettingsScreen() {
+        stubUser();
+        when(listSettingsService.open(user, MESSAGE_ID, list.getId())).thenReturn(Optional.of("Groceries"));
+
+        final Optional<String> toast =
+                handler.handle(callbackOnMessage(ListViewService.MORE_PREFIX + list.getId()));
+
+        assertThat(toast).get().asString().contains("Settings");
+        verify(listSettingsService).open(user, MESSAGE_ID, list.getId());
+    }
+
+    @Test
+    void more_reportsListGoneOrNotEditable_whenOpenFails() {
+        stubUser();
+        when(listSettingsService.open(user, MESSAGE_ID, list.getId())).thenReturn(Optional.empty());
+
         assertThat(handler.handle(callbackOnMessage(ListViewService.MORE_PREFIX + list.getId())))
-                .get().asString().contains("TK-186");
+                .get().asString().contains("can't edit");
     }
 
     @Test

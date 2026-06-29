@@ -4,6 +4,7 @@ import io.tykalo.list.PendingItem;
 import io.tykalo.list.Task;
 import io.tykalo.list.TaskService;
 import io.tykalo.menu.AddItemsService;
+import io.tykalo.menu.ListSettingsService;
 import io.tykalo.menu.ListViewService;
 import io.tykalo.menu.MembersService;
 import io.tykalo.menu.MyListsService;
@@ -24,7 +25,8 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
  * {@code lv:save:{task}:{page}} saves an item for later (TK-256) — defers it to pending and drops it
  * from the list — {@code lv:page:{list}:{n}} pages, {@code lv:lists} returns to the My Lists screen,
  * {@code lv:add:{list}} starts the add-items flow (TK-184), {@code lv:members:{list}} opens the Members
- * screen (TK-194), while {@code lv:more:{list}} is a placeholder until the more menu (TK-186) lands.
+ * screen (TK-194), while {@code lv:more:{list}} opens the minimal per-list settings screen (the auto-close
+ * toggle, TK-253), which TK-186 will expand into the full more menu.
  * Everything that edits the screen re-resolves the clicking user from the chat and takes the message id
  * from the callback. Non-{@code lv:} callbacks are left unclaimed.
  */
@@ -40,6 +42,7 @@ public class ListViewCallbackHandler implements CallbackHandler {
     private final MyListsService myListsService;
     private final AddItemsService addItemsService;
     private final MembersService membersService;
+    private final ListSettingsService listSettingsService;
 
     @Override
     public Optional<String> handle(final CallbackQuery callback) {
@@ -47,10 +50,7 @@ public class ListViewCallbackHandler implements CallbackHandler {
         if (data == null || !data.startsWith("lv:")) {
             return Optional.empty();
         }
-        if (data.startsWith(ListViewService.MORE_PREFIX)) {
-            return Optional.of("⋯ More options are coming soon (TK-186).");
-        }
-        // The remaining actions edit the screen in place, so they need the user and message id.
+        // Every action edits the screen in place, so it needs the user and message id.
         final Long chatId = chatIdOf(callback);
         final Integer messageId = messageIdOf(callback);
         if (chatId == null || messageId == null) {
@@ -62,6 +62,9 @@ public class ListViewCallbackHandler implements CallbackHandler {
         }
         if (data.startsWith(ListViewService.MEMBERS_PREFIX)) {
             return openMembers(data.substring(ListViewService.MEMBERS_PREFIX.length()), user.get(), messageId);
+        }
+        if (data.startsWith(ListViewService.MORE_PREFIX)) {
+            return openSettings(data.substring(ListViewService.MORE_PREFIX.length()), user.get(), messageId);
         }
         if (data.equals(ListViewService.BACK)) {
             myListsService.navigate(user.get(), messageId, 0);
@@ -99,6 +102,16 @@ public class ListViewCallbackHandler implements CallbackHandler {
         return membersService.open(user, messageId, listId)
                 .map(ignored -> "👥 Members")
                 .or(() -> Optional.of("That list is no longer available."));
+    }
+
+    private Optional<String> openSettings(final String rawListId, final User user, final int messageId) {
+        final UUID listId = parseUuid(rawListId);
+        if (listId == null) {
+            return Optional.of(EXPIRED);
+        }
+        return listSettingsService.open(user, messageId, listId)
+                .map(ignored -> "⚙️ Settings")
+                .or(() -> Optional.of("That list is no longer available or you can't edit it."));
     }
 
     private Optional<String> toggle(final String rest, final User user, final int messageId, final boolean done) {

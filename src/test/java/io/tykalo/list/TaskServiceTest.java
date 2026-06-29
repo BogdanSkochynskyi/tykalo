@@ -170,6 +170,40 @@ class TaskServiceTest {
     }
 
     @Test
+    void completeTask_publishesTaskCompletedEvent() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.completeTask(id);
+
+        verify(eventPublisher).publishEvent(new TaskCompletedEvent(task.getListId(), id));
+    }
+
+    @Test
+    void markDone_publishesTaskCompletedEvent_whenItToggled() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(id);
+
+        verify(eventPublisher).publishEvent(new TaskCompletedEvent(task.getListId(), id));
+    }
+
+    @Test
+    void markDone_doesNotPublishTaskCompletedEvent_whenAlreadyDone() {
+        final UUID id = UUID.randomUUID();
+        final Task task = todo(id);
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findById(id)).thenReturn(Optional.of(task));
+
+        taskService.markDone(id);
+
+        verify(eventPublisher, never()).publishEvent(any(TaskCompletedEvent.class));
+    }
+
+    @Test
     void completeTask_rejectsDoneToDoneTwice() {
         // Arrange
         final UUID id = UUID.randomUUID();

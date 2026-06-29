@@ -206,6 +206,35 @@ class ListServiceTest {
     }
 
     @Test
+    void setAutoClose_checksEditPermission_andUpdatesTheFlag() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final TaskList list = listWithId("Groceries");
+        when(listRepository.findById(list.getId())).thenReturn(Optional.of(list));
+
+        // Act
+        final TaskList result = listService.setAutoClose(actor, list.getId(), true);
+
+        // Assert
+        verify(permissionService).requireCanEditList(actor, list.getId());
+        assertThat(result.isAutoClose()).isTrue();
+    }
+
+    @Test
+    void setAutoClose_throws_andDoesNotTouchList_whenPermissionDenied() {
+        // Arrange
+        final UUID actor = UUID.randomUUID();
+        final UUID listId = UUID.randomUUID();
+        doThrow(new ListPermissionDeniedException(actor, listId, "edit list", ListMemberRole.MEMBER))
+                .when(permissionService).requireCanEditList(actor, listId);
+
+        // Act + Assert
+        assertThatThrownBy(() -> listService.setAutoClose(actor, listId, true))
+                .isInstanceOf(ListPermissionDeniedException.class);
+        verify(listRepository, never()).findById(any());
+    }
+
+    @Test
     void findAllAccessibleLists_unionsOwnedAndMemberLists_excludingArchivedMemberLists() {
         // Arrange
         final UUID userId = UUID.randomUUID();
