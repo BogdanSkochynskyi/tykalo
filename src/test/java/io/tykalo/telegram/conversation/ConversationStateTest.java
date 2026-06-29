@@ -9,7 +9,9 @@ import io.tykalo.telegram.conversation.ConversationState.AddingItems;
 import io.tykalo.telegram.conversation.ConversationState.ClosingList;
 import io.tykalo.telegram.conversation.ConversationState.ClosingListTarget;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListName;
+import io.tykalo.telegram.conversation.ConversationState.AddingTag;
 import io.tykalo.telegram.conversation.ConversationState.CreatingListType;
+import io.tykalo.telegram.conversation.ConversationState.EditingListTags;
 import io.tykalo.telegram.conversation.ConversationState.Help;
 import io.tykalo.telegram.conversation.ConversationState.HelpCategory;
 import io.tykalo.telegram.conversation.ConversationState.Idle;
@@ -44,7 +46,9 @@ class ConversationStateTest {
                 new HelpCategory(HelpTopic.NUDGERS),
                 new MembersScreen(listId),
                 new ClosingList(listId),
-                new ClosingListTarget(listId));
+                new ClosingListTarget(listId),
+                new EditingListTags(listId),
+                new AddingTag(listId, 13));
 
         for (final ConversationState state : all) {
             final String json = mapper.writeValueAsString(state);
@@ -81,6 +85,7 @@ class ConversationStateTest {
         assertThat(new AddingItems(listId, 42).expectsTextInput()).isTrue();
         assertThat(new CreatingListName(ListType.INBOX, 1).expectsTextInput()).isTrue();
         assertThat(new RenamingList(listId).expectsTextInput()).isTrue();
+        assertThat(new AddingTag(listId, 13).expectsTextInput()).isTrue();
 
         assertThat(new Idle().expectsTextInput()).isFalse();
         assertThat(new MainMenu().expectsTextInput()).isFalse();
@@ -93,5 +98,6 @@ class ConversationStateTest {
         assertThat(new MembersScreen(listId).expectsTextInput()).isFalse();
         assertThat(new ClosingList(listId).expectsTextInput()).isFalse();
         assertThat(new ClosingListTarget(listId).expectsTextInput()).isFalse();
+        assertThat(new EditingListTags(listId).expectsTextInput()).isFalse();
     }
 }

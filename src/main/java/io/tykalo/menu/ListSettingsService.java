@@ -20,9 +20,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
- * A minimal per-list settings screen, reached from the list view's {@code ⋯ More} button (TK-183). For now
- * it hosts a single control — the {@code 🤖 Auto-close when done} toggle (TK-253) — plus a Back button; the
- * full settings menu (rename, type, tags, members, delete) lands with TK-186, which will expand this screen.
+ * A per-list settings screen, reached from the list view's {@code ⋯ More} button (TK-183). It hosts the
+ * {@code 🤖 Auto-close when done} toggle (TK-253) and a {@code 🏷️ Tags} button into the tags screen
+ * ({@link TagsService}, TK-259), plus a Back button; the remaining controls (rename, type, members,
+ * delete) land with TK-186, which will expand this screen.
  *
  * <p>Settings are an OWNER/EDITOR action: the screen is only rendered for editors of an ACTIVE list, so the
  * underlying {@link ListService#setAutoClose} permission check (TK-192) never has to reject a tap that came
@@ -83,6 +84,7 @@ public class ListSettingsService {
         final String label = list.isAutoClose() ? "🤖 Auto-close: ON → turn off" : "🤖 Auto-close: OFF → turn on";
         final List<InlineKeyboardRow> rows = new ArrayList<>();
         rows.add(row(button(label, TOGGLE_AUTO_CLOSE_PREFIX + listId)));
+        rows.add(row(button("🏷️ Tags", TagsService.OPEN_PREFIX + listId)));
         rows.add(row(button("⬅️ Back", BACK_PREFIX + listId)));
         return InlineKeyboardMarkup.builder().keyboard(rows).build();
     }

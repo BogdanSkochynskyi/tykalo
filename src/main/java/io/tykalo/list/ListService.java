@@ -133,6 +133,40 @@ public class ListService {
     }
 
     /**
+     * Appends {@code tag} to a list's tags (TK-259) on behalf of {@code actorId}, enforcing the
+     * edit-list permission at the boundary (OWNER/EDITOR, TK-192). Idempotent: an already-present tag
+     * is left untouched. The tag is expected pre-normalized by {@link ListTags#validate}. Returns the
+     * updated list.
+     */
+    @Transactional
+    public TaskList addTag(final UUID actorId, final UUID listId, final String tag) {
+        permissionService.requireCanEditList(actorId, listId);
+        final TaskList list = listRepository.findById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
+        if (!list.getTags().contains(tag)) {
+            list.getTags().add(tag);
+            log.info("Added tag '{}' to list id={} by actor={}", tag, listId, actorId);
+        }
+        return list;
+    }
+
+    /**
+     * Removes {@code tag} from a list's tags (TK-259) on behalf of {@code actorId}, enforcing the
+     * edit-list permission at the boundary (OWNER/EDITOR, TK-192). A no-op if the tag is absent.
+     * Returns the updated list.
+     */
+    @Transactional
+    public TaskList removeTag(final UUID actorId, final UUID listId, final String tag) {
+        permissionService.requireCanEditList(actorId, listId);
+        final TaskList list = listRepository.findById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("List not found: " + listId));
+        if (list.getTags().remove(tag)) {
+            log.info("Removed tag '{}' from list id={} by actor={}", tag, listId, actorId);
+        }
+        return list;
+    }
+
+    /**
      * Deletes a list on behalf of {@code actorId}, enforcing the OWNER-only permission at the
      * boundary (TK-192) before delegating to {@link #deleteList(UUID)}. Throws
      * {@link ListPermissionDeniedException} if the actor may not delete the list.
